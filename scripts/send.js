@@ -2,6 +2,12 @@ const Send = {
   async uploadToR2(file, fileName, onProgress = null) {
     try {
       console.log(`[Send] Upload R2 iniciado: ${fileName}`);
+      console.log(`[Send] Tamanho do arquivo: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+
+      // Mostrar progresso inicial imediatamente
+      if (onProgress) {
+        onProgress(0, 0, file.size);
+      }
 
       // 1. Gerar presigned URL
       const urlResult = await window.r2API.generateUploadUrl(
@@ -60,7 +66,18 @@ const Send = {
 
       // 3. VERIFICAÇÃO OBRIGATÓRIA - Confirmar que o arquivo existe
       console.log('[Send] Verificando se arquivo foi salvo...');
-      const verifyResult = await window.r2API.verifyUpload(fileName);
+      
+      // Adicionar timeout na verificação
+      const verifyWithTimeout = async (fileName, timeoutMs = 10000) => {
+        return Promise.race([
+          window.r2API.verifyUpload(fileName),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout na verificação')), timeoutMs)
+          )
+        ]);
+      };
+      
+      const verifyResult = await verifyWithTimeout(fileName, 10000);
       
       if (!verifyResult.success || !verifyResult.exists) {
         throw new Error(`Falha na verificação: arquivo ${fileName} não foi encontrado no R2`);
@@ -106,10 +123,16 @@ const Send = {
     console.log(`[Send] Iniciando upload de ${files.length} arquivo(s)`);
     console.log(`[Send] Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
 
+    // Mostrar progresso inicial
+    if (onProgress) {
+      onProgress(1, 0, files.length);
+    }
+
     for (let i = 0; i < files.length; i++) {
       const { file, fileName } = files[i];
 
       console.log(`[Send] Fazendo upload ${i + 1}/${files.length}: ${fileName}`);
+      console.log(`[Send] Progresso geral: ${((uploadedSize / totalSize) * 100).toFixed(1)}%`);
 
       const fileProgressCallback = onProgress ? (percentage, loaded, total) => {
         const fileProgress = uploadedSize + loaded;
@@ -275,7 +298,7 @@ const Send = {
       console.log('[Send] Iniciando agendamento de post...');
 
       // Validações
-      if (!Renderer.selectedClient) {
+      if (!Renderer.selectedClient || !Renderer.selectedClient.id) {
         throw new Error('Selecione um cliente');
       }
 
@@ -311,8 +334,16 @@ const Send = {
       console.log('[Send] Validações OK');
       Notificacao.show('Iniciando agendamento...', 'info');
 
+      // Mostrar progresso inicial (preparação)
+      Notificacao.showProgress(0, 0, Renderer.mediaFiles.length);
+      Notificacao.updateProgressMessage('Preparando arquivos para upload...');
+
       // ETAPA 1: Upload de mídias para R2 PRIMEIRO
       console.log('[Send] ETAPA 1/3: Upload de mídias para R2...');
+      
+      // Pequena pausa para garantir que a UI foi atualizada
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const timestamp = Date.now();
         const randomId = Math.random().toString(36).substring(7);
@@ -339,6 +370,8 @@ const Send = {
 
       // ETAPA 2: Criar post no Supabase
       console.log('[Send] ETAPA 2/3: Criando post no Supabase...');
+      Notificacao.updateProgressMessage('Salvando informações do post...');
+      
       const postData = {
         clientId: Renderer.selectedClient.id,
         type: Renderer.postType,
@@ -357,6 +390,8 @@ const Send = {
 
       // ETAPA 3: Salvar referências das mídias no banco
       console.log('[Send] ETAPA 3/3: Salvando referências das mídias...');
+      Notificacao.updateProgressMessage('Vinculando mídias ao post...');
+      
       const mediaUrls = uploadResults.map((result, index) => ({
         url: result.publicUrl,
         order: index + 1,
@@ -368,6 +403,8 @@ const Send = {
 
       // VERIFICAÇÃO FINAL
       console.log('[Send] Realizando verificação final completa...');
+      Notificacao.updateProgressMessage('Verificando integridade dos arquivos...');
+      
       const finalCheck = await this.verifyAllUploads(uploadedFiles);
       
       if (!finalCheck.success) {
