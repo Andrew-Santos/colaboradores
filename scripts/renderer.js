@@ -42,22 +42,27 @@ const Renderer = {
   },
 
   selectClient(clientId) {
-    if (!clientId) {
+    // Limpar preview se nenhum cliente selecionado
+    if (!clientId || clientId === '') {
       document.getElementById('client-preview').classList.remove('show');
       this.selectedClient = null;
+      console.log('[Renderer] Cliente desmarcado');
       return;
     }
 
-    const client = this.clients.find(c => c.id === clientId);
+    // Converter para string para garantir comparação correta
+    const client = this.clients.find(c => String(c.id) === String(clientId));
     
     if (!client) {
-      console.error('[Renderer] Cliente não encontrado');
+      console.error('[Renderer] Cliente não encontrado. ID procurado:', clientId);
+      console.log('[Renderer] Clientes disponíveis:', this.clients.map(c => ({ id: c.id, users: c.users })));
       Notificacao.show('Cliente não encontrado', 'error');
       return;
     }
 
     this.selectedClient = client;
     this.updateClientPreview();
+    console.log('[Renderer] Cliente selecionado:', client.users);
   },
 
   updateClientPreview() {
@@ -88,12 +93,13 @@ const Renderer = {
       this.mediaFiles = [this.mediaFiles[0]];
       this.updateMediaPreview();
     }
+
+    console.log('[Renderer] Tipo de post selecionado:', type);
   },
 
   handleFileUpload(files) {
     const fileArray = Array.from(files);
 
-    // Validações
     if (fileArray.length === 0) {
       return;
     }
@@ -153,6 +159,7 @@ const Renderer = {
     }
 
     this.updateMediaPreview();
+    console.log('[Renderer] Arquivos carregados:', this.mediaFiles.length);
   },
 
   updateMediaPreview() {
@@ -209,6 +216,8 @@ const Renderer = {
       document.querySelectorAll('.post-type').forEach(el => el.classList.remove('selected'));
       this.postType = '';
     }
+
+    console.log('[Renderer] Arquivo removido. Total:', this.mediaFiles.length);
   },
 
   truncateFileName(fileName, maxLength = 25) {
@@ -237,6 +246,8 @@ const Renderer = {
     document.getElementById('caption').value = '';
     document.getElementById('schedule-datetime').value = '';
     document.getElementById('caption-counter').textContent = '0 / 2200 caracteres';
+    
+    console.log('[Renderer] Formulário resetado');
   }
 };
 
