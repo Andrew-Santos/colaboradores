@@ -99,6 +99,37 @@ window.supabaseAPI = {
       console.error('[API] Erro ao agendar post:', error);
       return { success: false, error: error.message };
     }
+  },
+
+  // SALVAR MÍDIAS DO POST
+  async saveMedia(postId, mediaFiles) {
+    try {
+      console.log('[API] Salvando mídias - Post ID:', postId);
+      console.log('[API] Número de arquivos:', mediaFiles.length);
+      
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/save-media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ postId, mediaFiles })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao salvar mídias');
+      }
+      
+      console.log('[API] Mídias salvas com sucesso');
+      return result;
+      
+    } catch (error) {
+      console.error('[API] Erro ao salvar mídias:', error);
+      return { success: false, error: error.message };
+    }
   }
 };
 
@@ -138,24 +169,6 @@ window.r2API = {
       return { success: false, error: error.message };
     }
   },
-  // SALVAR MÍDIAS DO POST
-async saveMedia(postId, mediaFiles) {
-  try {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${CONFIG.API_URL}/api/save-media`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ postId, mediaFiles })
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('[API] Erro ao salvar mídias:', error);
-    return { success: false, error: error.message };
-  }
-},
 
   // GERAR PRESIGNED URLs PARA MÚLTIPLOS ARQUIVOS
   async generateUploadUrls(files) {
@@ -263,4 +276,3 @@ async saveMedia(postId, mediaFiles) {
 };
 
 window.CONFIG = CONFIG;
-
