@@ -403,6 +403,94 @@ app.post('/api/save-media', verifyToken, async (req, res) => {
   }
 });
 
+// ============ NOVO: DELETAR POST (PARA ROLLBACK) ============
+app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.id;
+    
+    console.log(`[Delete] Iniciando rollback do post ${postId} por usuário ${userId}`);
+    
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // 1. Verificar se o post existe
+    const { data: post, error: fetchError } = await supabase
+      .from('post')
+      .select('id, created_by')
+      .eq('id', postId)
+      .single();
+    
+    if (fetchError) {
+      console.error('[Delete] Erro ao buscar post:', fetchError);
+      
+      // Se o post não existe, considerar como sucesso (já foi deletado)
+      if (fetchError.code === 'PGRST116') {
+        console.log('[Delete] Post já não existe, considerando sucesso');
+        return res.json({
+          success: true,
+          message: 'Post já estava deletado'
+        });
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Post não encontrado'
+      });
+    }
+    
+    // 2. Verificar permissão (opcional - pode remover se quiser permitir qualquer admin deletar)
+    if (post.created_by !== userId) {
+      console.log('[Delete] Usuário diferente, mas permitindo rollback');
+    }
+    
+    // 3. Deletar mídias associadas primeiro (para manter integridade)
+    console.log('[Delete] Deletando mídias do post...');
+    const { error: deleteMediaError } = await supabase
+      .from('post_media')
+      .delete()
+      .eq('id_post', postId);
+    
+    if (deleteMediaError) {
+      console.error('[Delete] Erro ao deletar mídias:', deleteMediaError);
+      // Continuar mesmo assim, pois o importante é deletar o post
+    } else {
+      console.log('[Delete] Mídias deletadas com sucesso');
+    }
+    
+    // 4. Deletar o post
+    console.log('[Delete] Deletando post...');
+    const { error: deletePostError } = await supabase
+      .from('post')
+      .delete()
+      .eq('id', postId);
+    
+    if (deletePostError) {
+      console.error('[Delete] Erro ao deletar post:', deletePostError);
+      throw deletePostError;
+    }
+    
+    console.log(`[Delete] ✓ Post ${postId} e suas mídias deletados com sucesso`);
+    
+    res.json({
+      success: true,
+      message: 'Post deletado com sucesso'
+    });
+    
+  } catch (error) {
+    console.error('[Delete] Erro fatal:', error);
+    console.error('[Delete] Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao deletar post: ' + error.message
+    });
+  }
+});
+
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
   res.json({ 
