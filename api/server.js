@@ -16,14 +16,13 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Sempre permitir se não houver origin (requisições do mesmo domínio)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.log('[CORS] Origem bloqueada:', origin);
-      callback(null, true); // Permitir mesmo assim para debug
+      callback(null, true);
     }
   },
   credentials: true
@@ -31,8 +30,10 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 
-// ============ SERVIR ARQUIVOS ESTÁTICOS ============
-app.use(express.static(path.join(__dirname, '..')));
+// ============ SERVIR ARQUIVOS ESTÁTICOS (APENAS EM DEV) ============
+if (process.env.NODE_ENV !== 'production') {
+  app.use(express.static(path.join(__dirname, '..')));
+}
 
 // ============ INICIALIZAR SUPABASE ============
 let supabase;
@@ -342,11 +343,6 @@ app.get('/health', (req, res) => {
     r2: process.env.R2_API_URL ? 'Configurado' : 'Não configurado',
     env: process.env.NODE_ENV || 'development'
   });
-});
-
-// ============ ROTA PRINCIPAL (FRONTEND) ============
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
 // ============ TRATAMENTO DE ERROS ============
