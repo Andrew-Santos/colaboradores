@@ -31,11 +31,29 @@ const Notificacao = {
     const percentText = document.getElementById('progress-percentage');
     const filesText = document.getElementById('progress-files');
 
-    container.classList.add('show');
-    fill.style.width = `${percentage}%`;
-    percentText.textContent = `${Math.round(percentage)}%`;
-    filesText.textContent = `Arquivo ${current} de ${total}`;
+    if (!container || !fill || !percentText || !filesText) {
+      console.warn('[Notificacao] Elementos de progresso não encontrados');
+      return;
+    }
 
+    container.classList.add('show');
+    
+    // Garantir que a barra apareça imediatamente, mesmo com 0%
+    fill.style.transition = percentage > 0 ? 'width 0.3s ease' : 'none';
+    fill.style.width = `${Math.max(percentage, 1)}%`; // Mínimo 1% para mostrar algo
+    
+    percentText.textContent = `${Math.round(percentage)}%`;
+    
+    // Mostrar mensagem apropriada baseada no progresso
+    if (percentage === 0 || percentage < 1) {
+      filesText.textContent = 'Preparando upload...';
+    } else if (percentage >= 100) {
+      filesText.textContent = `✓ Concluído! ${total} arquivo(s)`;
+    } else {
+      filesText.textContent = `Enviando arquivo ${current} de ${total}`;
+    }
+
+    // Esconder automaticamente quando completar
     if (percentage >= 100) {
       setTimeout(() => {
         container.classList.remove('show');
@@ -43,7 +61,17 @@ const Notificacao = {
     }
   },
 
+  updateProgressMessage(message) {
+    const filesText = document.getElementById('progress-files');
+    if (filesText) {
+      filesText.textContent = message;
+    }
+  },
+
   hideProgress() {
-    document.getElementById('progress-container').classList.remove('show');
+    const container = document.getElementById('progress-container');
+    if (container) {
+      container.classList.remove('show');
+    }
   }
 };
