@@ -216,77 +216,6 @@ app.get('/api/clients', verifyToken, async (req, res) => {
   }
 });
 
-// ============ ROTAS DE UPLOAD (R2) ============
-
-// GERAR URL DE UPLOAD
-app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
-  try {
-    const { fileName, contentType, fileSize } = req.body;
-
-    console.log('[Upload] Requisição recebida');
-    console.log('[Upload] Arquivo:', fileName);
-    console.log('[Upload] Tipo:', contentType);
-    console.log('[Upload] Tamanho:', fileSize);
-
-    if (!fileName || !contentType) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'fileName e contentType são obrigatórios' 
-      });
-    }
-
-    if (fileSize > 500 * 1024 * 1024) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Arquivo muito grande (máx 500MB)' 
-      });
-    }
-
-    const allowedTypes = [
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'video/mp4', 'video/quicktime', 'video/x-msvideo'
-    ];
-    
-    if (!allowedTypes.includes(contentType)) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Tipo de arquivo não permitido' 
-      });
-    }
-
-    // Verificar se as variáveis R2 estão configuradas
-    if (!process.env.R2_API_URL || !process.env.R2_PUBLIC_URL) {
-      console.error('[Upload] Variáveis R2 não configuradas');
-      return res.status(500).json({ 
-        success: false,
-        error: 'Servidor de upload não configurado' 
-      });
-    }
-
-    // URL do seu servidor R2 (portal.teamcriativa.com)
-    const uploadUrl = `${process.env.R2_API_URL}?file=${encodeURIComponent(fileName)}`;
-    
-    // URL pública do R2
-    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
-
-    console.log('[Upload] Upload URL:', uploadUrl);
-    console.log('[Upload] Public URL:', publicUrl);
-
-    res.json({
-      success: true,
-      uploadUrl,
-      publicUrl
-    });
-
-  } catch (error) {
-    console.error('[Upload] Erro:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Erro ao gerar URL: ' + error.message 
-    });
-  }
-});
-
 // ============ ROTAS DE POSTS ============
 
 // AGENDAR POST
@@ -358,7 +287,6 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
 
     console.log('[Post] Tentando inserir no banco...');
 
-    // Estrutura da tabela post (usando created_by em vez de user_id)
     const postData = {
       id_client: clientId,
       type: type,
@@ -405,8 +333,6 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     supabase: process.env.SUPABASE_URL ? 'Configurado' : 'Não configurado',
-    r2_api: process.env.R2_API_URL ? 'Configurado' : 'Não configurado',
-    r2_public: process.env.R2_PUBLIC_URL ? 'Configurado' : 'Não configurado',
     env: process.env.NODE_ENV || 'development'
   });
 });
