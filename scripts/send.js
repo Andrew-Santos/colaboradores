@@ -3,7 +3,7 @@ const Send = {
     try {
       console.log(`[Send] Upload R2 iniciado: ${fileName}`);
 
-      // CORREÇÃO: Usar window.r2API em vez de fazer fetch direto
+      // 1. Gerar presigned URL
       const urlResult = await window.r2API.generateUploadUrl(
         fileName,
         file.type,
@@ -60,7 +60,7 @@ const Send = {
 
       console.log(`[Send] Upload R2 concluído: ${fileName}`);
 
-      // 3. OPCIONAL: Verificar se o arquivo foi enviado com sucesso
+      // 3. Verificar se o arquivo foi enviado com sucesso
       try {
         const verifyResult = await window.r2API.verifyUpload(fileName);
         
@@ -71,7 +71,6 @@ const Send = {
         }
       } catch (verifyError) {
         console.warn('[Send] Não foi possível verificar o upload:', verifyError);
-        // Não falhar o upload se a verificação falhar
       }
 
       return {
@@ -143,29 +142,27 @@ const Send = {
     }
   },
 
-  // Substitua a função saveMediaToDatabase no seu send.js por esta versão:
-
-async saveMediaToDatabase(postId, mediaUrls) {
-  try {
-    console.log('[Send] Salvando URLs das mídias no banco...');
-    console.log('[Send] Post ID:', postId);
-    console.log('[Send] Mídias:', mediaUrls);
-    
-    // Chamar a API para salvar as mídias
-    const result = await window.supabaseAPI.saveMedia(postId, mediaUrls);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Erro ao salvar mídias no banco');
+  async saveMediaToDatabase(postId, mediaUrls) {
+    try {
+      console.log('[Send] Salvando URLs das mídias no banco...');
+      console.log('[Send] Post ID:', postId);
+      console.log('[Send] Mídias:', mediaUrls);
+      
+      // Chamar a API para salvar as mídias
+      const result = await window.supabaseAPI.saveMedia(postId, mediaUrls);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao salvar mídias no banco');
+      }
+      
+      console.log('[Send] Mídias salvas com sucesso:', result.count);
+      return result;
+      
+    } catch (error) {
+      console.error('[Send] Erro ao salvar mídias:', error);
+      throw error;
     }
-    
-    console.log('[Send] Mídias salvas com sucesso:', result.count);
-    return result;
-    
-  } catch (error) {
-    console.error('[Send] Erro ao salvar mídias:', error);
-    throw error;
-  }
-},
+  },
 
   async schedulePost() {
     try {
@@ -248,13 +245,14 @@ async saveMediaToDatabase(postId, mediaUrls) {
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
       console.log('[Send] Uploads concluídos:', uploadResults.length);
 
-      // 3. Salvar URLs das mídias (opcional)
+      // 3. Preparar dados das mídias para o banco
       const mediaUrls = uploadResults.map((result, index) => ({
         url: result.publicUrl,
         order: index + 1,
         type: Renderer.mediaFiles[index].type
       }));
 
+      console.log('[Send] Salvando mídias no banco de dados...');
       await this.saveMediaToDatabase(postId, mediaUrls);
 
       // Sucesso!
@@ -276,4 +274,3 @@ async saveMediaToDatabase(postId, mediaUrls) {
 
 // Tornar Send global
 window.Send = Send;
-
