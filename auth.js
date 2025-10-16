@@ -139,41 +139,31 @@ const Auth = {
   },
 
   // Renovar sessão (fazer requisição ao backend para validar token)
-  async renewSession() {
-    try {
-      const token = this.getToken();
-      if (!token) {
-        return false;
-      }
-
-      const response = await fetch(`${CONFIG.API_URL}/auth/verify`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        this.clearSession();
-        return false;
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        this.saveUser(result.user);
-        console.log('[Auth] Sessão renovada');
-        return true;
-      }
-
-      return false;
-
-    } catch (error) {
-      console.error('[Auth] Erro ao renovar sessão:', error);
+  // Substituir apenas esta função no seu auth.js existente
+async renewSession() {
+  try {
+    const token = this.getToken();
+    if (!token) {
       return false;
     }
-  },
+
+    const result = await window.supabaseAPI.verifyToken();
+
+    if (result.success) {
+      this.saveUser(result.user);
+      console.log('[Auth] Sessão renovada');
+      return true;
+    }
+
+    this.clearSession();
+    return false;
+
+  } catch (error) {
+    console.error('[Auth] Erro ao renovar sessão:', error);
+    this.clearSession();
+    return false;
+  }
+},
 
   // Auto-login se houver token válido
   async autoLogin() {
@@ -241,4 +231,5 @@ const Auth = {
 };
 
 // Tornar Auth global para outros scripts
+
 window.Auth = Auth;
