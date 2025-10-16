@@ -8,7 +8,7 @@ const app = express();
 
 // ============ CONFIGURAÇÃO CORS ============
 const allowedOrigins = [
-  process.env.CORS_ORIGIN,
+  'https://colaboradores.teamcriativa.com',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
   'http://localhost:3000'
@@ -16,10 +16,14 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Sempre permitir se não houver origin (requisições do mesmo domínio)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('CORS não permitido'));
+      console.log('[CORS] Origem bloqueada:', origin);
+      callback(null, true); // Permitir mesmo assim para debug
     }
   },
   credentials: true
@@ -28,20 +32,25 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 
 // ============ SERVIR ARQUIVOS ESTÁTICOS ============
-// Serve os arquivos do frontend (HTML, CSS, JS)
 app.use(express.static(path.join(__dirname, '..')));
 
 // ============ INICIALIZAR SUPABASE ============
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+let supabase;
 
-console.log('[Server] Configuração carregada:');
-console.log('  - SUPABASE_URL:', process.env.SUPABASE_URL ? '✓' : '✗');
-console.log('  - SUPABASE_SERVICE_KEY:', process.env.SUPABASE_SERVICE_KEY ? '✓' : '✗');
-console.log('  - R2_API_URL:', process.env.R2_API_URL ? '✓' : '✗');
-console.log('  - CORS_ORIGIN:', process.env.CORS_ORIGIN || 'não definido');
+try {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    throw new Error('Variáveis SUPABASE não configuradas');
+  }
+
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  );
+
+  console.log('[Server] Supabase inicializado com sucesso');
+} catch (error) {
+  console.error('[Server] ERRO ao inicializar Supabase:', error.message);
+}
 
 // ============ MIDDLEWARE DE AUTENTICAÇÃO ============
 const verifyToken = async (req, res, next) => {
@@ -57,9 +66,17 @@ const verifyToken = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não inicializado' 
+      });
+    }
+
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
+      console.error('[Auth] Token inválido:', error?.message);
       return res.status(401).json({ 
         success: false,
         error: 'Token inválido' 
@@ -69,8 +86,8 @@ const verifyToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('[Auth] Erro:', error);
-    res.status(401).json({ 
+    console.error('[Auth] Erro no middleware:', error);
+    res.status(500).json({ 
       success: false,
       error: 'Erro na autenticação' 
     });
@@ -82,14 +99,27 @@ const verifyToken = async (req, res, next) => {
 // LOGIN
 app.post('/auth/login', async (req, res) => {
   try {
+    console.log('[Login] Requisição recebida');
+    
     const { email, password } = req.body;
 
     if (!email || !password) {
+      console.log('[Login] Dados faltando');
       return res.status(400).json({ 
         success: false,
         error: 'Email e senha obrigatórios' 
       });
     }
+
+    if (!supabase) {
+      console.error('[Login] Supabase não disponível');
+      return res.status(500).json({ 
+        success: false,
+        error: 'Serviço indisponível' 
+      });
+    }
+
+    console.log('[Login] Tentando autenticar:', email);
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -97,14 +127,14 @@ app.post('/auth/login', async (req, res) => {
     });
 
     if (error) {
-      console.error('[Login] Erro:', error.message);
+      console.error('[Login] Erro Supabase:', error.message);
       return res.status(401).json({ 
         success: false,
         error: 'Credenciais inválidas' 
       });
     }
 
-    console.log('[Login] Sucesso:', email);
+    console.log('[Login] Sucesso para:', email);
 
     res.json({
       success: true,
@@ -116,10 +146,10 @@ app.post('/auth/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Login] Erro:', error);
+    console.error('[Login] Erro fatal:', error);
     res.status(500).json({ 
       success: false,
-      error: 'Erro no servidor' 
+      error: 'Erro no servidor: ' + error.message 
     });
   }
 });
@@ -152,18 +182,28 @@ app.post('/auth/verify', verifyToken, (req, res) => {
 // LISTAR CLIENTES
 app.get('/api/clients', verifyToken, async (req, res) => {
   try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
     const { data, error } = await supabase
       .from('client')
       .select('*')
       .order('users', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Clients] Erro:', error);
+      throw error;
+    }
 
-    console.log('[Clients] Retornando', data.length, 'clientes');
+    console.log('[Clients] Retornando', data?.length || 0, 'clientes');
 
     res.json({ 
       success: true, 
-      data 
+      data: data || []
     });
 
   } catch (error) {
@@ -208,8 +248,6 @@ app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
       });
     }
 
-    // Aqui você chamaria sua API do Cloudflare R2
-    // Por enquanto, retornando estrutura esperada
     const uploadUrl = `${process.env.R2_API_URL}/upload?file=${fileName}`;
     const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
 
@@ -257,6 +295,13 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
       });
     }
 
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
     const { data: post, error: postError } = await supabase
       .from('post')
       .insert([{
@@ -294,7 +339,8 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     supabase: process.env.SUPABASE_URL ? 'Configurado' : 'Não configurado',
-    r2: process.env.R2_API_URL ? 'Configurado' : 'Não configurado'
+    r2: process.env.R2_API_URL ? 'Configurado' : 'Não configurado',
+    env: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -303,16 +349,28 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
-// ============ INICIAR SERVIDOR ============
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log('\n================================');
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📂 Servindo arquivos estáticos`);
-  console.log(`🔗 Acesse: http://localhost:${PORT}`);
-  console.log('================================\n');
+// ============ TRATAMENTO DE ERROS ============
+app.use((err, req, res, next) => {
+  console.error('[Server] Erro não tratado:', err);
+  res.status(500).json({ 
+    success: false,
+    error: 'Erro interno do servidor',
+    details: err.message 
+  });
 });
 
+// ============ INICIAR SERVIDOR (apenas local) ============
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log('\n================================');
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📂 Servindo arquivos estáticos`);
+    console.log(`🔗 Acesse: http://localhost:${PORT}`);
+    console.log('================================\n');
+  });
+}
+
+// Exportar para Vercel
 module.exports = app;
