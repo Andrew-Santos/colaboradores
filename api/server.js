@@ -338,13 +338,14 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
 
     console.log('[Post] Tentando inserir no banco...');
 
+    // Estrutura correta da tabela post
     const postData = {
       id_client: clientId,
       type: type,
       caption: caption || null,
       status: 'PENDENTE',
       agendamento: scheduled.toISOString(),
-      user_id: req.user.id
+      created_by: req.user.id  // Usando created_by em vez de user_id
     };
 
     console.log('[Post] Dados a inserir:', JSON.stringify(postData, null, 2));
@@ -364,7 +365,8 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
 
     res.json({
       success: true,
-      postId: post.id
+      postId: post.id,
+      post: post
     });
 
   } catch (error) {
