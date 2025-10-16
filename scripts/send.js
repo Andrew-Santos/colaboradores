@@ -143,22 +143,29 @@ const Send = {
     }
   },
 
-  async saveMediaToDatabase(postId, mediaUrls) {
-    try {
-      console.log('[Send] Salvando URLs das mídias no banco...');
-      console.log('[Send] Post ID:', postId);
-      console.log('[Send] Mídias:', mediaUrls);
-      
-      // TODO: Se você tiver uma tabela de mídias no banco, 
-      // adicione aqui uma rota no backend para salvar
-      // Por enquanto, apenas logando os dados
-      
-      return true;
-    } catch (error) {
-      console.error('[Send] Erro ao salvar mídias:', error);
-      throw error;
+  // Substitua a função saveMediaToDatabase no seu send.js por esta versão:
+
+async saveMediaToDatabase(postId, mediaUrls) {
+  try {
+    console.log('[Send] Salvando URLs das mídias no banco...');
+    console.log('[Send] Post ID:', postId);
+    console.log('[Send] Mídias:', mediaUrls);
+    
+    // Chamar a API para salvar as mídias
+    const result = await window.supabaseAPI.saveMedia(postId, mediaUrls);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Erro ao salvar mídias no banco');
     }
-  },
+    
+    console.log('[Send] Mídias salvas com sucesso:', result.count);
+    return result;
+    
+  } catch (error) {
+    console.error('[Send] Erro ao salvar mídias:', error);
+    throw error;
+  }
+},
 
   async schedulePost() {
     try {
@@ -269,3 +276,4 @@ const Send = {
 
 // Tornar Send global
 window.Send = Send;
+
