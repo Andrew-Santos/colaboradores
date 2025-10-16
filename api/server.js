@@ -249,20 +249,44 @@ app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
       });
     }
 
-    const uploadUrl = `${process.env.R2_API_URL}/upload?file=${fileName}`;
-    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Gerar URL de upload assinada do Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('portal_criativa')
+      .createSignedUploadUrl(fileName);
+
+    if (uploadError) {
+      console.error('[Upload] Erro ao gerar URL:', uploadError);
+      throw uploadError;
+    }
+
+    // URL pública do arquivo
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('portal_criativa')
+      .getPublicUrl(fileName);
+
+    console.log('[Upload] URL gerada para:', fileName);
 
     res.json({
       success: true,
-      uploadUrl,
-      publicUrl
+      uploadUrl: uploadData.signedUrl,
+      publicUrl: publicUrl,
+      token: uploadData.token
     });
 
   } catch (error) {
     console.error('[Upload] Erro:', error);
     res.status(500).json({ 
       success: false,
-      error: 'Erro ao gerar URL' 
+      error: 'Erro ao gerar URL: ' + error.message 
     });
   }
 });
