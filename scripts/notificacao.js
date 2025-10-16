@@ -53,12 +53,7 @@ const Notificacao = {
       filesText.textContent = `Enviando arquivo ${current} de ${total}`;
     }
 
-    // Esconder automaticamente quando completar
-    if (percentage >= 100) {
-      setTimeout(() => {
-        container.classList.remove('show');
-      }, 2000);
-    }
+    // NÃO esconder automaticamente - deixar o código principal controlar
   },
 
   updateProgressMessage(message) {
