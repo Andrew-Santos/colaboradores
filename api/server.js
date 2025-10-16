@@ -327,6 +327,82 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
   }
 });
 
+// SALVAR MÍDIAS DO POST
+app.post('/api/save-media', verifyToken, async (req, res) => {
+  try {
+    console.log('[Media] Requisição recebida');
+    console.log('[Media] Body:', JSON.stringify(req.body, null, 2));
+
+    const { postId, mediaFiles } = req.body;
+
+    // Validações
+    if (!postId) {
+      console.error('[Media] postId não fornecido');
+      return res.status(400).json({ 
+        success: false,
+        error: 'ID do post não fornecido' 
+      });
+    }
+
+    if (!mediaFiles || !Array.isArray(mediaFiles) || mediaFiles.length === 0) {
+      console.error('[Media] mediaFiles inválido');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Arquivos de mídia não fornecidos' 
+      });
+    }
+
+    if (!supabase) {
+      console.error('[Media] Supabase não inicializado');
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    console.log('[Media] Tentando inserir', mediaFiles.length, 'mídias...');
+
+    // Preparar dados para inserção
+    const mediaData = mediaFiles.map(media => ({
+      id_post: postId,
+      type: media.type,
+      url_media: media.url,
+      order: String(media.order),
+      url_render: media.url_render || null,
+      id_return: media.id_return || null
+    }));
+
+    console.log('[Media] Dados a inserir:', JSON.stringify(mediaData, null, 2));
+
+    // Inserir no banco
+    const { data, error } = await supabase
+      .from('post_media')
+      .insert(mediaData)
+      .select();
+
+    if (error) {
+      console.error('[Media] Erro do Supabase:', error);
+      throw error;
+    }
+
+    console.log('[Media] Mídias salvas com sucesso:', data.length);
+
+    res.json({
+      success: true,
+      count: data.length,
+      media: data
+    });
+
+  } catch (error) {
+    console.error('[Media] Erro fatal:', error);
+    console.error('[Media] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao salvar mídias: ' + error.message 
+    });
+  }
+});
+
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
   res.json({ 
