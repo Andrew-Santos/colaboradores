@@ -216,12 +216,17 @@ app.get('/api/clients', verifyToken, async (req, res) => {
   }
 });
 
-// ============ ROTAS DE UPLOAD ============
+// ============ ROTAS DE UPLOAD (R2) ============
 
 // GERAR URL DE UPLOAD
 app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
   try {
     const { fileName, contentType, fileSize } = req.body;
+
+    console.log('[Upload] Requisição recebida');
+    console.log('[Upload] Arquivo:', fileName);
+    console.log('[Upload] Tipo:', contentType);
+    console.log('[Upload] Tamanho:', fileSize);
 
     if (!fileName || !contentType) {
       return res.status(400).json({ 
@@ -249,37 +254,28 @@ app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
       });
     }
 
-    if (!supabase) {
+    // Verificar se as variáveis R2 estão configuradas
+    if (!process.env.R2_API_URL || !process.env.R2_PUBLIC_URL) {
+      console.error('[Upload] Variáveis R2 não configuradas');
       return res.status(500).json({ 
         success: false,
-        error: 'Supabase não disponível' 
+        error: 'Servidor de upload não configurado' 
       });
     }
 
-    // Gerar URL de upload assinada do Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase
-      .storage
-      .from('portal_criativa')
-      .createSignedUploadUrl(fileName);
+    // URL do seu servidor R2 (portal.teamcriativa.com)
+    const uploadUrl = `${process.env.R2_API_URL}?file=${encodeURIComponent(fileName)}`;
+    
+    // URL pública do R2
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
 
-    if (uploadError) {
-      console.error('[Upload] Erro ao gerar URL:', uploadError);
-      throw uploadError;
-    }
-
-    // URL pública do arquivo
-    const { data: { publicUrl } } = supabase
-      .storage
-      .from('portal_criativa')
-      .getPublicUrl(fileName);
-
-    console.log('[Upload] URL gerada para:', fileName);
+    console.log('[Upload] Upload URL:', uploadUrl);
+    console.log('[Upload] Public URL:', publicUrl);
 
     res.json({
       success: true,
-      uploadUrl: uploadData.signedUrl,
-      publicUrl: publicUrl,
-      token: uploadData.token
+      uploadUrl,
+      publicUrl
     });
 
   } catch (error) {
@@ -362,14 +358,14 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
 
     console.log('[Post] Tentando inserir no banco...');
 
-    // Estrutura correta da tabela post
+    // Estrutura da tabela post (usando created_by em vez de user_id)
     const postData = {
       id_client: clientId,
       type: type,
       caption: caption || null,
       status: 'PENDENTE',
       agendamento: scheduled.toISOString(),
-      created_by: req.user.id  // Usando created_by em vez de user_id
+      created_by: req.user.id
     };
 
     console.log('[Post] Dados a inserir:', JSON.stringify(postData, null, 2));
@@ -409,7 +405,8 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     supabase: process.env.SUPABASE_URL ? 'Configurado' : 'Não configurado',
-    r2: process.env.R2_API_URL ? 'Configurado' : 'Não configurado',
+    r2_api: process.env.R2_API_URL ? 'Configurado' : 'Não configurado',
+    r2_public: process.env.R2_PUBLIC_URL ? 'Configurado' : 'Não configurado',
     env: process.env.NODE_ENV || 'development'
   });
 });
