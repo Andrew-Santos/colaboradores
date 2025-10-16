@@ -115,12 +115,12 @@ const Send = {
         body: JSON.stringify(postData)
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erro ao criar post');
+        throw new Error(result.error || 'Erro ao criar post');
       }
 
-      const result = await response.json();
       console.log('[Send] Post criado:', result);
       return result;
 
@@ -130,8 +130,31 @@ const Send = {
     }
   },
 
+  async saveMediaToDatabase(postId, mediaUrls) {
+    try {
+      console.log('[Send] Salvando URLs das mídias no banco...');
+      
+      // Aqui você pode adicionar uma rota no backend para salvar as URLs
+      // Por enquanto, vamos apenas logar
+      console.log('[Send] Post ID:', postId);
+      console.log('[Send] Mídias:', mediaUrls);
+      
+      // TODO: Implementar endpoint /api/save-media
+      // Estrutura sugerida:
+      // POST /api/save-media
+      // Body: { postId, mediaUrls: [{ url, order, type }] }
+      
+      return true;
+    } catch (error) {
+      console.error('[Send] Erro ao salvar mídias:', error);
+      throw error;
+    }
+  },
+
   async schedulePost() {
     try {
+      console.log('[Send] Iniciando agendamento de post...');
+
       // Validações
       if (!Renderer.selectedClient) {
         throw new Error('Selecione um cliente');
@@ -166,6 +189,7 @@ const Send = {
         throw new Error('Legenda excede o limite de 2200 caracteres');
       }
 
+      console.log('[Send] Validações OK');
       Notificacao.show('Iniciando agendamento...', 'info');
 
       // 1. Criar post no backend
@@ -176,6 +200,7 @@ const Send = {
         scheduledDate: scheduledDate.toISOString()
       };
 
+      console.log('[Send] Criando post...');
       const createdPost = await this.createPost(postData);
       
       if (!createdPost.success) {
@@ -183,15 +208,21 @@ const Send = {
       }
 
       const postId = createdPost.postId;
+      console.log('[Send] Post criado com ID:', postId);
 
       // 2. Upload de mídias para R2
+      console.log('[Send] Iniciando upload de mídias...');
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const timestamp = Date.now();
         const randomId = Math.random().toString(36).substring(7);
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
         const fileName = `POST/${postId}/${timestamp}_${randomId}_${index}.${fileExtension}`;
 
-        return { file: media.file, fileName: fileName, originalMedia: media };
+        return { 
+          file: media.file, 
+          fileName: fileName, 
+          originalMedia: media 
+        };
       });
 
       const onProgress = (percentage, current, total) => {
@@ -199,14 +230,24 @@ const Send = {
       };
 
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
+      console.log('[Send] Uploads concluídos:', uploadResults.length);
 
-      // 3. Salvar URLs das mídias (isso seria feito no backend em uma implementação real)
-      console.log('[Send] Uploads concluídos:', uploadResults);
+      // 3. Salvar URLs das mídias (opcional, dependendo da sua estrutura)
+      const mediaUrls = uploadResults.map((result, index) => ({
+        url: result.publicUrl,
+        order: index + 1,
+        type: Renderer.mediaFiles[index].type
+      }));
 
+      await this.saveMediaToDatabase(postId, mediaUrls);
+
+      // Sucesso!
+      console.log('[Send] Agendamento concluído com sucesso!');
       Notificacao.show('Post agendado com sucesso!', 'success');
       
       setTimeout(() => {
         Renderer.resetForm();
+        Notificacao.hideProgress();
       }, 2000);
 
     } catch (error) {
