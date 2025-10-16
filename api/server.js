@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -25,6 +26,10 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '50mb' }));
+
+// ============ SERVIR ARQUIVOS ESTÁTICOS ============
+// Serve os arquivos do frontend (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, '..')));
 
 // ============ INICIALIZAR SUPABASE ============
 const supabase = createClient(
@@ -293,6 +298,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ============ ROTA PRINCIPAL (FRONTEND) ============
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+
 // ============ INICIAR SERVIDOR ============
 const PORT = process.env.PORT || 3000;
 
@@ -300,6 +310,8 @@ app.listen(PORT, () => {
   console.log('\n================================');
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📂 Servindo arquivos estáticos`);
+  console.log(`🔗 Acesse: http://localhost:${PORT}`);
   console.log('================================\n');
 });
 
