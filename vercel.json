@@ -1,31 +1,23 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/server.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/server.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/auth/(.*)",
-      "dest": "api/server.js"
+      "source": "/auth/:path*",
+      "destination": "/api/server"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "api/server.js"
+      "source": "/api/:path*",
+      "destination": "/api/server"
     },
     {
-      "src": "/health",
-      "dest": "api/server.js"
-    },
-    {
-      "src": "/(.*\\.(js|css|html|png|jpg|jpeg|gif|svg|ico|json))",
-      "dest": "/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/health",
+      "destination": "/api/server"
     }
   ]
 }
