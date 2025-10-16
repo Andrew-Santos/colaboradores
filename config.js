@@ -108,6 +108,7 @@ window.r2API = {
   async generateUploadUrl(fileName, contentType, fileSize) {
     try {
       console.log('[R2 API] Gerando presigned URL para:', fileName);
+      console.log('[R2 API] Endpoint:', `${CONFIG.R2_API_URL}/generate-upload-url`);
       
       const response = await fetch(`${CONFIG.R2_API_URL}/generate-upload-url`, {
         method: 'POST',
@@ -121,14 +122,16 @@ window.r2API = {
         })
       });
 
-      const result = await response.json();
-      
       if (!response.ok) {
-        throw new Error(result.error || 'Erro ao gerar URL');
+        const errorText = await response.text();
+        console.error('[R2 API] Resposta de erro:', errorText);
+        throw new Error(`Erro HTTP ${response.status}: ${errorText.substring(0, 100)}`);
       }
 
+      const result = await response.json();
+
       console.log('[R2 API] Presigned URL gerada com sucesso');
-      return result;
+      return { success: true, ...result };
 
     } catch (error) {
       console.error('[R2 API] Erro ao gerar URL:', error);
