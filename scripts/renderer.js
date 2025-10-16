@@ -6,16 +6,18 @@ const Renderer = {
 
   async loadClients() {
     try {
-      const { data, error } = await supabase
-        .from('client')
-        .select('*')
-        .order('users', { ascending: true });
+      console.log('[Renderer] Carregando clientes...');
+      
+      const result = await window.supabaseAPI.getClients();
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao carregar clientes');
+      }
 
-      this.clients = data || [];
+      this.clients = result.data || [];
       this.renderClientSelect();
       console.log('[Renderer] Clientes carregados:', this.clients.length);
+
     } catch (error) {
       console.error('[Renderer] Erro ao carregar clientes:', error);
       Notificacao.show('Erro ao carregar clientes', 'error');
@@ -39,28 +41,23 @@ const Renderer = {
     `;
   },
 
-  async selectClient(clientId) {
+  selectClient(clientId) {
     if (!clientId) {
       document.getElementById('client-preview').classList.remove('show');
       this.selectedClient = null;
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .from('client')
-        .select('*')
-        .eq('id', clientId)
-        .single();
-
-      if (error) throw error;
-
-      this.selectedClient = data;
-      this.updateClientPreview();
-    } catch (error) {
-      console.error('[Renderer] Erro ao buscar cliente:', error);
-      Notificacao.show('Erro ao carregar dados do cliente', 'error');
+    const client = this.clients.find(c => c.id === clientId);
+    
+    if (!client) {
+      console.error('[Renderer] Cliente não encontrado');
+      Notificacao.show('Cliente não encontrado', 'error');
+      return;
     }
+
+    this.selectedClient = client;
+    this.updateClientPreview();
   },
 
   updateClientPreview() {
@@ -95,6 +92,28 @@ const Renderer = {
 
   handleFileUpload(files) {
     const fileArray = Array.from(files);
+
+    // Validações
+    if (fileArray.length === 0) {
+      return;
+    }
+
+    // Validar tipos de arquivo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime'];
+    for (const file of fileArray) {
+      if (!allowedTypes.includes(file.type)) {
+        Notificacao.show(`Tipo de arquivo não permitido: ${file.name}`, 'warning');
+        return;
+      }
+    }
+
+    // Limitar tamanho (500MB por arquivo)
+    for (const file of fileArray) {
+      if (file.size > 500 * 1024 * 1024) {
+        Notificacao.show(`Arquivo muito grande: ${file.name}`, 'warning');
+        return;
+      }
+    }
 
     if (this.postType !== 'carousel' && fileArray.length > 1) {
       Notificacao.show('Este tipo de postagem aceita apenas 1 arquivo', 'warning');
@@ -159,7 +178,7 @@ const Renderer = {
           <div class="media-overlay">
             <span class="order-badge">#${media.order}</span>
             <div class="media-controls">
-              <button class="remove-media-btn" data-id="${media.id}" title="Remover arquivo">
+              <button class="remove-media-btn" data-id="${media.id}" title="Remover arquivo" type="button">
                 <i class="ph ph-trash"></i>
               </button>
             </div>
@@ -220,3 +239,6 @@ const Renderer = {
     document.getElementById('caption-counter').textContent = '0 / 2200 caracteres';
   }
 };
+
+// Tornar Renderer global
+window.Renderer = Renderer;

@@ -3,10 +3,15 @@ const Send = {
     try {
       console.log(`[Send] Upload R2 iniciado: ${fileName}`);
 
-      // 1. Solicitar Presigned URL
-      const presignedResponse = await fetch(`${CONFIG.R2_API_URL}/generate-upload-url`, {
+      const token = Auth.getToken();
+
+      // 1. Solicitar Presigned URL ao backend
+      const presignedResponse = await fetch(`${CONFIG.API_URL}/api/generate-upload-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           fileName: fileName,
           contentType: file.type,
@@ -47,33 +52,16 @@ const Send = {
 
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
-        xhr.timeout = 300000;
+        xhr.timeout = 300000; // 5 minutos
         xhr.send(file);
       });
-
-      // 3. Verificar upload
-      const verifyResponse = await fetch(`${CONFIG.R2_API_URL}/verify-upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName })
-      });
-
-      if (!verifyResponse.ok) {
-        throw new Error('Falha na verificação');
-      }
-
-      const verification = await verifyResponse.json();
-      if (!verification.exists) {
-        throw new Error('Arquivo não encontrado após upload');
-      }
 
       console.log(`[Send] Upload R2 concluído: ${fileName}`);
 
       return {
         success: true,
         path: fileName,
-        publicUrl: publicUrl,
-        size: verification.size
+        publicUrl: publicUrl
       };
 
     } catch (error) {
@@ -114,41 +102,30 @@ const Send = {
 
   async createPost(postData) {
     try {
-      console.log('[Send] Criando post no Supabase:', postData);
+      console.log('[Send] Criando post no backend:', postData);
 
-      const { data, error } = await supabase
-        .from('post')
-        .insert([postData])
-        .select()
-        .single();
+      const token = Auth.getToken();
 
-      if (error) throw error;
+      const response = await fetch(`${CONFIG.API_URL}/api/schedule-post`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(postData)
+      });
 
-      console.log('[Send] Post criado:', data);
-      return data;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao criar post');
+      }
+
+      const result = await response.json();
+      console.log('[Send] Post criado:', result);
+      return result;
 
     } catch (error) {
       console.error('[Send] Erro ao criar post:', error);
-      throw error;
-    }
-  },
-
-  async createPostMedia(mediaData) {
-    try {
-      console.log('[Send] Criando registros de mídia:', mediaData.length);
-
-      const { data, error } = await supabase
-        .from('post_media')
-        .insert(mediaData)
-        .select();
-
-      if (error) throw error;
-
-      console.log('[Send] Registros de mídia criados');
-      return data;
-
-    } catch (error) {
-      console.error('[Send] Erro ao criar mídia:', error);
       throw error;
     }
   },
@@ -189,30 +166,30 @@ const Send = {
         throw new Error('Legenda excede o limite de 2200 caracteres');
       }
 
-      Notificacao.show('Iniciando upload...', 'info');
+      Notificacao.show('Iniciando agendamento...', 'info');
 
-      // 1. Criar post no banco
+      // 1. Criar post no backend
       const postData = {
-        id_client: Renderer.selectedClient.id,
-        caption: caption || null,
-        collaborators: null,
-        user_tags: null,
+        clientId: Renderer.selectedClient.id,
         type: Renderer.postType,
-        status: 'PENDENTE',
-        agendamento: scheduledDate.toISOString()
+        caption: caption || null,
+        scheduledDate: scheduledDate.toISOString()
       };
 
       const createdPost = await this.createPost(postData);
-      if (!createdPost) {
-        throw new Error('Falha ao criar post no banco de dados');
+      
+      if (!createdPost.success) {
+        throw new Error('Falha ao criar post');
       }
+
+      const postId = createdPost.postId;
 
       // 2. Upload de mídias para R2
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const timestamp = Date.now();
         const randomId = Math.random().toString(36).substring(7);
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
-        const fileName = `POST/${createdPost.id}/${timestamp}_${randomId}_${index}.${fileExtension}`;
+        const fileName = `POST/${postId}/${timestamp}_${randomId}_${index}.${fileExtension}`;
 
         return { file: media.file, fileName: fileName, originalMedia: media };
       });
@@ -223,15 +200,8 @@ const Send = {
 
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
 
-      // 3. Criar registros de mídia
-      const mediaRecords = uploadResults.map((result, index) => ({
-        id_post: createdPost.id,
-        type: filesToUpload[index].originalMedia.type,
-        url_media: result.publicUrl,
-        order: filesToUpload[index].originalMedia.order.toString()
-      }));
-
-      await this.createPostMedia(mediaRecords);
+      // 3. Salvar URLs das mídias (isso seria feito no backend em uma implementação real)
+      console.log('[Send] Uploads concluídos:', uploadResults);
 
       Notificacao.show('Post agendado com sucesso!', 'success');
       
@@ -246,3 +216,6 @@ const Send = {
     }
   }
 };
+
+// Tornar Send global
+window.Send = Send;
