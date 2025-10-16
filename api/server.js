@@ -5,60 +5,86 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// CORS seguro - apenas seu domínio
+// ============ CONFIGURAÇÃO CORS ============
+const allowedOrigins = [
+  process.env.CORS_ORIGIN,
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS não permitido'));
+    }
+  },
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
-// Inicializar Supabase no backend
+// ============ INICIALIZAR SUPABASE ============
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY // Service key no backend!
+  process.env.SUPABASE_SERVICE_KEY
 );
 
-// Middleware de autenticação
-const verifyToken = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Token não fornecido' });
-  }
+console.log('[Server] Configuração carregada:');
+console.log('  - SUPABASE_URL:', process.env.SUPABASE_URL ? '✓' : '✗');
+console.log('  - SUPABASE_SERVICE_KEY:', process.env.SUPABASE_SERVICE_KEY ? '✓' : '✗');
+console.log('  - R2_API_URL:', process.env.R2_API_URL ? '✓' : '✗');
+console.log('  - CORS_ORIGIN:', process.env.CORS_ORIGIN || 'não definido');
 
+// ============ MIDDLEWARE DE AUTENTICAÇÃO ============
+const verifyToken = async (req, res, next) => {
   try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Token não fornecido' 
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
-      return res.status(401).json({ error: 'Token inválido' });
+      return res.status(401).json({ 
+        success: false,
+        error: 'Token inválido' 
+      });
     }
     
     req.user = user;
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Erro na autenticação' });
+    console.error('[Auth] Erro:', error);
+    res.status(401).json({ 
+      success: false,
+      error: 'Erro na autenticação' 
+    });
   }
 };
 
 // ============ ROTAS DE AUTENTICAÇÃO ============
 
-// Login
+// LOGIN
 app.post('/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validações
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email e senha obrigatórios' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Email e senha obrigatórios' 
+      });
     }
-
-    if (email.length > 255 || password.length > 255) {
-      return res.status(400).json({ error: 'Campos muito grandes' });
-    }
-
-    // Rate limiting (implementar com Redis em produção)
-    // Por enquanto, validação básica
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -66,8 +92,14 @@ app.post('/auth/login', async (req, res) => {
     });
 
     if (error) {
-      return res.status(401).json({ error: error.message });
+      console.error('[Login] Erro:', error.message);
+      return res.status(401).json({ 
+        success: false,
+        error: 'Credenciais inválidas' 
+      });
     }
+
+    console.log('[Login] Sucesso:', email);
 
     res.json({
       success: true,
@@ -79,33 +111,40 @@ app.post('/auth/login', async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ error: 'Erro no servidor' });
+    console.error('[Login] Erro:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro no servidor' 
+    });
   }
 });
 
-// Logout (validar token)
+// LOGOUT
 app.post('/auth/logout', verifyToken, async (req, res) => {
   try {
-    // Logout no Supabase
-    await supabase.auth.signOut();
-    
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao fazer logout' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao fazer logout' 
+    });
   }
 });
 
-// Verificar sessão
+// VERIFICAR TOKEN
 app.post('/auth/verify', verifyToken, (req, res) => {
   res.json({
     success: true,
-    user: req.user
+    user: {
+      id: req.user.id,
+      email: req.user.email
+    }
   });
 });
 
 // ============ ROTAS DE CLIENTES ============
 
-// Carregar clientes (apenas usuários autenticados)
+// LISTAR CLIENTES
 app.get('/api/clients', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -115,72 +154,104 @@ app.get('/api/clients', verifyToken, async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ success: true, data });
+    console.log('[Clients] Retornando', data.length, 'clientes');
+
+    res.json({ 
+      success: true, 
+      data 
+    });
 
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao carregar clientes' });
+    console.error('[Clients] Erro:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao carregar clientes' 
+    });
   }
 });
 
 // ============ ROTAS DE UPLOAD ============
 
-// Gerar URL de upload (apenas usuários autenticados)
+// GERAR URL DE UPLOAD
 app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
   try {
     const { fileName, contentType, fileSize } = req.body;
 
-    // Validações
     if (!fileName || !contentType) {
-      return res.status(400).json({ error: 'Parâmetros obrigatórios' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'fileName e contentType são obrigatórios' 
+      });
     }
 
-    // Limitar tamanho de arquivo (ex: 500MB)
     if (fileSize > 500 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Arquivo muito grande' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Arquivo muito grande (máx 500MB)' 
+      });
     }
 
-    // Validar tipos permitidos
-    const allowedTypes = ['image/jpeg', 'image/png', 'video/mp4', 'video/quicktime'];
-    if (!allowedTypes.includes(contentType)) {
-      return res.status(400).json({ error: 'Tipo de arquivo não permitido' });
-    }
-
-    // Implementar lógica de geração de presigned URL
-    // Isso varia conforme seu serviço (R2, S3, etc)
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/quicktime', 'video/x-msvideo'
+    ];
     
+    if (!allowedTypes.includes(contentType)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Tipo de arquivo não permitido' 
+      });
+    }
+
+    // Aqui você chamaria sua API do Cloudflare R2
+    // Por enquanto, retornando estrutura esperada
+    const uploadUrl = `${process.env.R2_API_URL}/upload?file=${fileName}`;
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
+
     res.json({
       success: true,
-      uploadUrl: 'url_de_upload_gerada_com_seguranca',
-      publicUrl: 'url_publica_do_arquivo'
+      uploadUrl,
+      publicUrl
     });
 
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao gerar URL' });
+    console.error('[Upload] Erro:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao gerar URL' 
+    });
   }
 });
 
 // ============ ROTAS DE POSTS ============
 
-// Agendar post
+// AGENDAR POST
 app.post('/api/schedule-post', verifyToken, async (req, res) => {
   try {
-    const { clientId, type, caption, scheduledDate, mediaFiles } = req.body;
+    const { clientId, type, caption, scheduledDate } = req.body;
 
-    // Validações SEVERAS
     if (!clientId || !type || !scheduledDate) {
-      return res.status(400).json({ error: 'Dados incompletos' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dados incompletos' 
+      });
     }
 
     const scheduled = new Date(scheduledDate);
     if (scheduled <= new Date()) {
-      return res.status(400).json({ error: 'Data deve ser no futuro' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Data deve ser no futuro' 
+      });
     }
 
     if (caption && caption.length > 2200) {
-      return res.status(400).json({ error: 'Legenda muito longa' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Legenda muito longa' 
+      });
     }
 
-    // Criar post no banco
     const { data: post, error: postError } = await supabase
       .from('post')
       .insert([{
@@ -189,12 +260,14 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
         caption: caption || null,
         status: 'PENDENTE',
         agendamento: scheduled.toISOString(),
-        user_id: req.user.id // Rastrear quem criou
+        user_id: req.user.id
       }])
       .select()
       .single();
 
     if (postError) throw postError;
+
+    console.log('[Post] Criado:', post.id);
 
     res.json({
       success: true,
@@ -202,14 +275,32 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[API] Erro:', error);
-    res.status(500).json({ error: 'Erro ao agendar post' });
+    console.error('[Post] Erro:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao agendar post' 
+    });
   }
 });
 
-// ============ INICIAR SERVIDOR ============
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+// ============ HEALTH CHECK ============
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    supabase: process.env.SUPABASE_URL ? 'Configurado' : 'Não configurado',
+    r2: process.env.R2_API_URL ? 'Configurado' : 'Não configurado'
+  });
 });
+
+// ============ INICIAR SERVIDOR ============
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log('\n================================');
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log('================================\n');
+});
+
+module.exports = app;
