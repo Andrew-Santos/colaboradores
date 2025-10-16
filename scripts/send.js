@@ -136,7 +136,8 @@ const Send = {
 
       const fileProgressCallback = onProgress ? (percentage, loaded, total) => {
         const fileProgress = uploadedSize + loaded;
-        const totalProgress = (fileProgress / totalSize) * 100;
+        // Upload representa 80% do progresso total (0-80%)
+        const totalProgress = (fileProgress / totalSize) * 80;
         onProgress(totalProgress, i + 1, files.length);
       } : null;
 
@@ -387,6 +388,9 @@ const Send = {
 
       postId = createdPost.postId;
       console.log('[Send] ✓ ETAPA 2 CONCLUÍDA: Post criado com ID:', postId);
+      
+      // Atualizar progresso: Post criado = 90%
+      Notificacao.showProgress(90, uploadResults.length, uploadResults.length);
 
       // ETAPA 3: Salvar referências das mídias no banco
       console.log('[Send] ETAPA 3/3: Salvando referências das mídias...');
@@ -400,6 +404,9 @@ const Send = {
 
       await this.saveMediaToDatabase(postId, mediaUrls);
       console.log('[Send] ✓ ETAPA 3 CONCLUÍDA: Mídias salvas no banco');
+      
+      // Atualizar progresso: Mídias salvas = 95%
+      Notificacao.showProgress(95, uploadResults.length, uploadResults.length);
 
       // VERIFICAÇÃO FINAL
       console.log('[Send] Realizando verificação final completa...');
@@ -411,18 +418,31 @@ const Send = {
         throw new Error(`Verificação final falhou! ${finalCheck.missingFiles.length} arquivo(s) não encontrado(s) no R2`);
       }
 
-      // SUCESSO TOTAL!
+      // SUCESSO TOTAL! Agora sim chega em 100%
       console.log('[Send] ✓✓✓ AGENDAMENTO CONCLUÍDO COM SUCESSO! ✓✓✓');
       console.log(`[Send] Post ID: ${postId}`);
       console.log(`[Send] Mídias: ${uploadResults.length} arquivo(s)`);
       console.log(`[Send] Status: Todos os arquivos verificados e salvos`);
       
+      // Atualizar para 100% SOMENTE AGORA
+      Notificacao.showProgress(100, uploadResults.length, uploadResults.length);
+      Notificacao.updateProgressMessage(`✓ Concluído! ${uploadResults.length} mídia(s)`);
+      
+      // Aguardar um pouco antes de mostrar a mensagem de sucesso
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       Notificacao.show(`Post agendado com sucesso! ${uploadResults.length} mídia(s) enviada(s)`, 'success');
       
+      // Aguardar um pouco antes de mostrar a mensagem de sucesso
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      Notificacao.show(`Post agendado com sucesso! ${uploadResults.length} mídia(s) enviada(s)`, 'success');
+      
+      // Aguardar mais um pouco antes de resetar o formulário e esconder a barra
       setTimeout(() => {
         Renderer.resetForm();
         Notificacao.hideProgress();
-      }, 2000);
+      }, 2500);
 
     } catch (error) {
       console.error('[Send] ✗✗✗ ERRO NO AGENDAMENTO ✗✗✗');
