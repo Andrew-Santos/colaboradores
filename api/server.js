@@ -272,17 +272,48 @@ app.post('/api/generate-upload-url', verifyToken, async (req, res) => {
 // AGENDAR POST
 app.post('/api/schedule-post', verifyToken, async (req, res) => {
   try {
+    console.log('[Post] Requisição recebida');
+    console.log('[Post] Body:', JSON.stringify(req.body, null, 2));
+    console.log('[Post] User:', req.user.id);
+
     const { clientId, type, caption, scheduledDate } = req.body;
 
-    if (!clientId || !type || !scheduledDate) {
+    // Validações detalhadas
+    if (!clientId) {
+      console.error('[Post] clientId não fornecido');
       return res.status(400).json({ 
         success: false,
-        error: 'Dados incompletos' 
+        error: 'Cliente não selecionado' 
+      });
+    }
+
+    if (!type) {
+      console.error('[Post] type não fornecido');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Tipo de post não selecionado' 
+      });
+    }
+
+    if (!scheduledDate) {
+      console.error('[Post] scheduledDate não fornecido');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Data de agendamento não fornecida' 
       });
     }
 
     const scheduled = new Date(scheduledDate);
+    if (isNaN(scheduled.getTime())) {
+      console.error('[Post] Data inválida:', scheduledDate);
+      return res.status(400).json({ 
+        success: false,
+        error: 'Data de agendamento inválida' 
+      });
+    }
+
     if (scheduled <= new Date()) {
+      console.error('[Post] Data no passado:', scheduledDate);
       return res.status(400).json({ 
         success: false,
         error: 'Data deve ser no futuro' 
@@ -290,6 +321,7 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
     }
 
     if (caption && caption.length > 2200) {
+      console.error('[Post] Legenda muito longa:', caption.length);
       return res.status(400).json({ 
         success: false,
         error: 'Legenda muito longa' 
@@ -297,28 +329,38 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
     }
 
     if (!supabase) {
+      console.error('[Post] Supabase não inicializado');
       return res.status(500).json({ 
         success: false,
         error: 'Supabase não disponível' 
       });
     }
 
+    console.log('[Post] Tentando inserir no banco...');
+
+    const postData = {
+      id_client: clientId,
+      type: type,
+      caption: caption || null,
+      status: 'PENDENTE',
+      agendamento: scheduled.toISOString(),
+      user_id: req.user.id
+    };
+
+    console.log('[Post] Dados a inserir:', JSON.stringify(postData, null, 2));
+
     const { data: post, error: postError } = await supabase
       .from('post')
-      .insert([{
-        id_client: clientId,
-        type: type,
-        caption: caption || null,
-        status: 'PENDENTE',
-        agendamento: scheduled.toISOString(),
-        user_id: req.user.id
-      }])
+      .insert([postData])
       .select()
       .single();
 
-    if (postError) throw postError;
+    if (postError) {
+      console.error('[Post] Erro do Supabase:', postError);
+      throw postError;
+    }
 
-    console.log('[Post] Criado:', post.id);
+    console.log('[Post] Post criado com sucesso:', post.id);
 
     res.json({
       success: true,
@@ -326,10 +368,11 @@ app.post('/api/schedule-post', verifyToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Post] Erro:', error);
+    console.error('[Post] Erro fatal:', error);
+    console.error('[Post] Stack:', error.stack);
     res.status(500).json({ 
       success: false,
-      error: 'Erro ao agendar post' 
+      error: 'Erro ao agendar post: ' + error.message 
     });
   }
 });
