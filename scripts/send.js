@@ -3,30 +3,23 @@ const Send = {
     try {
       console.log(`[Send] Upload R2 iniciado: ${fileName}`);
 
-      const token = Auth.getToken();
+      // CORREÇÃO: Usar window.r2API em vez de fazer fetch direto
+      const urlResult = await window.r2API.generateUploadUrl(
+        fileName,
+        file.type,
+        file.size
+      );
 
-      // 1. Solicitar Presigned URL ao backend
-      const presignedResponse = await fetch(`${CONFIG.API_URL}/api/generate-upload-url`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          fileName: fileName,
-          contentType: file.type,
-          fileSize: file.size
-        })
-      });
-
-      if (!presignedResponse.ok) {
-        const error = await presignedResponse.json();
-        throw new Error(error.error || 'Erro ao gerar URL de upload');
+      if (!urlResult.success) {
+        throw new Error(urlResult.error || 'Erro ao gerar URL de upload');
       }
 
-      const { uploadUrl, publicUrl } = await presignedResponse.json();
+      const { uploadUrl, publicUrl } = urlResult;
+      console.log('[Send] Presigned URL obtida');
+      console.log('[Send] Upload URL:', uploadUrl);
+      console.log('[Send] Public URL:', publicUrl);
 
-      // 2. Upload direto para R2
+      // 2. Upload direto para R2 usando a Presigned URL
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -43,12 +36,21 @@ const Send = {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
-            reject(new Error(`Upload falhou: ${xhr.status}`));
+            console.error('[Send] Status de resposta:', xhr.status);
+            console.error('[Send] Resposta:', xhr.responseText);
+            reject(new Error(`Upload falhou: ${xhr.status} - ${xhr.statusText}`));
           }
         });
 
-        xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
-        xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
+        xhr.addEventListener('error', () => {
+          console.error('[Send] Erro de rede no upload');
+          reject(new Error('Erro de rede no upload'));
+        });
+        
+        xhr.addEventListener('timeout', () => {
+          console.error('[Send] Timeout no upload');
+          reject(new Error('Timeout no upload'));
+        });
 
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
@@ -57,6 +59,20 @@ const Send = {
       });
 
       console.log(`[Send] Upload R2 concluído: ${fileName}`);
+
+      // 3. OPCIONAL: Verificar se o arquivo foi enviado com sucesso
+      try {
+        const verifyResult = await window.r2API.verifyUpload(fileName);
+        
+        if (!verifyResult.exists) {
+          console.warn('[Send] Aviso: Arquivo pode não ter sido enviado corretamente');
+        } else {
+          console.log('[Send] Arquivo verificado com sucesso no R2');
+        }
+      } catch (verifyError) {
+        console.warn('[Send] Não foi possível verificar o upload:', verifyError);
+        // Não falhar o upload se a verificação falhar
+      }
 
       return {
         success: true,
@@ -78,8 +94,13 @@ const Send = {
     let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
     let uploadedSize = 0;
 
+    console.log(`[Send] Iniciando upload de ${files.length} arquivo(s)`);
+    console.log(`[Send] Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+
     for (let i = 0; i < files.length; i++) {
       const { file, fileName } = files[i];
+
+      console.log(`[Send] Fazendo upload ${i + 1}/${files.length}: ${fileName}`);
 
       const fileProgressCallback = onProgress ? (percentage, loaded, total) => {
         const fileProgress = uploadedSize + loaded;
@@ -95,8 +116,11 @@ const Send = {
 
       uploadedSize += file.size;
       uploadResults.push(result);
+      
+      console.log(`[Send] Upload ${i + 1}/${files.length} concluído`);
     }
 
+    console.log(`[Send] Todos os uploads concluídos: ${uploadResults.length} arquivo(s)`);
     return uploadResults;
   },
 
@@ -104,20 +128,9 @@ const Send = {
     try {
       console.log('[Send] Criando post no backend:', postData);
 
-      const token = Auth.getToken();
+      const result = await window.supabaseAPI.schedulePost(postData);
 
-      const response = await fetch(`${CONFIG.API_URL}/api/schedule-post`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(postData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
+      if (!result.success) {
         throw new Error(result.error || 'Erro ao criar post');
       }
 
@@ -133,16 +146,12 @@ const Send = {
   async saveMediaToDatabase(postId, mediaUrls) {
     try {
       console.log('[Send] Salvando URLs das mídias no banco...');
-      
-      // Aqui você pode adicionar uma rota no backend para salvar as URLs
-      // Por enquanto, vamos apenas logar
       console.log('[Send] Post ID:', postId);
       console.log('[Send] Mídias:', mediaUrls);
       
-      // TODO: Implementar endpoint /api/save-media
-      // Estrutura sugerida:
-      // POST /api/save-media
-      // Body: { postId, mediaUrls: [{ url, order, type }] }
+      // TODO: Se você tiver uma tabela de mídias no banco, 
+      // adicione aqui uma rota no backend para salvar
+      // Por enquanto, apenas logando os dados
       
       return true;
     } catch (error) {
@@ -232,7 +241,7 @@ const Send = {
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
       console.log('[Send] Uploads concluídos:', uploadResults.length);
 
-      // 3. Salvar URLs das mídias (opcional, dependendo da sua estrutura)
+      // 3. Salvar URLs das mídias (opcional)
       const mediaUrls = uploadResults.map((result, index) => ({
         url: result.publicUrl,
         order: index + 1,
