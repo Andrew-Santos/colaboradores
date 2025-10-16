@@ -1,11 +1,12 @@
 // Configuração da API
 const CONFIG = {
+  // Se estiver no mesmo domínio, usa a raiz
   API_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : 'https://colaboradores.teamcriativa.com/api'
+    : '' // Vazio = mesma origem (colaboradores.teamcriativa.com)
 };
 
-console.log('[Config] API URL:', CONFIG.API_URL);
+console.log('[Config] API URL:', CONFIG.API_URL || 'Mesma origem');
 
 // Wrapper para chamadas à API
 window.supabaseAPI = {
