@@ -16,8 +16,6 @@ const Send = {
 
       const { uploadUrl, publicUrl } = urlResult;
       console.log('[Send] Presigned URL obtida');
-      console.log('[Send] Upload URL:', uploadUrl);
-      console.log('[Send] Public URL:', publicUrl);
 
       // 2. Upload direto para R2 usando a Presigned URL
       await new Promise((resolve, reject) => {
@@ -60,36 +58,48 @@ const Send = {
 
       console.log(`[Send] Upload R2 concluído: ${fileName}`);
 
-      // 3. Verificar se o arquivo foi enviado com sucesso
+      // 3. VERIFICAÇÃO OBRIGATÓRIA - Confirmar que o arquivo existe
+      console.log('[Send] Verificando se arquivo foi salvo...');
+      const verifyResult = await window.r2API.verifyUpload(fileName);
+      
+      if (!verifyResult.success || !verifyResult.exists) {
+        throw new Error(`Falha na verificação: arquivo ${fileName} não foi encontrado no R2`);
+      }
+      
+      console.log('[Send] ✓ Arquivo verificado e confirmado no R2');
+
+      // 4. VALIDAÇÃO EXTRA - Tentar acessar a URL pública
       try {
-        const verifyResult = await window.r2API.verifyUpload(fileName);
-        
-        if (!verifyResult.exists) {
-          console.warn('[Send] Aviso: Arquivo pode não ter sido enviado corretamente');
+        const headResponse = await fetch(publicUrl, { method: 'HEAD' });
+        if (!headResponse.ok) {
+          console.warn('[Send] Aviso: URL pública não está acessível imediatamente');
         } else {
-          console.log('[Send] Arquivo verificado com sucesso no R2');
+          console.log('[Send] ✓ URL pública acessível');
         }
-      } catch (verifyError) {
-        console.warn('[Send] Não foi possível verificar o upload:', verifyError);
+      } catch (e) {
+        console.warn('[Send] Não foi possível validar URL pública:', e.message);
       }
 
       return {
         success: true,
         path: fileName,
-        publicUrl: publicUrl
+        publicUrl: publicUrl,
+        verified: true
       };
 
     } catch (error) {
       console.error('[Send] Erro no upload R2:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        path: fileName
       };
     }
   },
 
   async uploadMultipleFiles(files, onProgress = null) {
     const uploadResults = [];
+    const failedUploads = [];
     let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
     let uploadedSize = 0;
 
@@ -110,17 +120,55 @@ const Send = {
       const result = await this.uploadToR2(file, fileName, fileProgressCallback);
 
       if (!result.success) {
-        throw new Error(result.error || `Falha no upload do arquivo ${fileName}`);
+        console.error(`[Send] ✗ Falha no upload ${i + 1}/${files.length}: ${result.error}`);
+        failedUploads.push({
+          fileName,
+          index: i + 1,
+          error: result.error
+        });
+        
+        // Parar imediatamente se houver falha
+        throw new Error(`Falha no upload do arquivo "${file.name}" (${i + 1}/${files.length}): ${result.error}`);
       }
 
       uploadedSize += file.size;
       uploadResults.push(result);
       
-      console.log(`[Send] Upload ${i + 1}/${files.length} concluído`);
+      console.log(`[Send] ✓ Upload ${i + 1}/${files.length} concluído e verificado`);
     }
 
-    console.log(`[Send] Todos os uploads concluídos: ${uploadResults.length} arquivo(s)`);
+    // VERIFICAÇÃO FINAL - Confirmar que TODOS os arquivos estão acessíveis
+    console.log('[Send] Realizando verificação final de todos os arquivos...');
+    const finalVerification = await this.verifyAllUploads(uploadResults.map(r => r.path));
+    
+    if (!finalVerification.success) {
+      throw new Error(`Verificação final falhou: ${finalVerification.missingFiles.length} arquivo(s) não encontrado(s)`);
+    }
+
+    console.log(`[Send] ✓ Todos os ${uploadResults.length} arquivo(s) verificados e confirmados!`);
     return uploadResults;
+  },
+
+  async verifyAllUploads(fileNames) {
+    const missingFiles = [];
+    
+    for (const fileName of fileNames) {
+      try {
+        const result = await window.r2API.verifyUpload(fileName);
+        if (!result.exists) {
+          missingFiles.push(fileName);
+        }
+      } catch (error) {
+        console.error(`[Send] Erro ao verificar ${fileName}:`, error);
+        missingFiles.push(fileName);
+      }
+    }
+
+    return {
+      success: missingFiles.length === 0,
+      missingFiles,
+      totalChecked: fileNames.length
+    };
   },
 
   async createPost(postData) {
@@ -148,7 +196,6 @@ const Send = {
       console.log('[Send] Post ID:', postId);
       console.log('[Send] Mídias:', mediaUrls);
       
-      // Chamar a API para salvar as mídias
       const result = await window.supabaseAPI.saveMedia(postId, mediaUrls);
       
       if (!result.success) {
@@ -164,7 +211,66 @@ const Send = {
     }
   },
 
+  async rollbackPost(postId, uploadedFiles = []) {
+    console.log('[Send] Iniciando rollback...');
+    const errors = [];
+
+    // 1. Deletar arquivos do R2
+    if (uploadedFiles.length > 0) {
+      try {
+        console.log(`[Send] Deletando ${uploadedFiles.length} arquivo(s) do R2...`);
+        const deleteResult = await window.r2API.deleteFiles(uploadedFiles);
+        
+        if (deleteResult.success) {
+          console.log('[Send] ✓ Arquivos deletados do R2');
+        } else {
+          console.error('[Send] ✗ Erro ao deletar arquivos do R2:', deleteResult.error);
+          errors.push('Erro ao deletar arquivos do R2');
+        }
+      } catch (error) {
+        console.error('[Send] Erro ao deletar do R2:', error);
+        errors.push('Erro ao deletar do R2: ' + error.message);
+      }
+    }
+
+    // 2. Deletar post do Supabase (se você tiver essa função na API)
+    // Você precisará adicionar um endpoint DELETE na sua API
+    if (postId) {
+      try {
+        console.log('[Send] Deletando post do Supabase...');
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${window.CONFIG.API_URL}/api/delete-post/${postId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          console.log('[Send] ✓ Post deletado do Supabase');
+        } else {
+          console.error('[Send] ✗ Erro ao deletar post do Supabase');
+          errors.push('Erro ao deletar post do banco');
+        }
+      } catch (error) {
+        console.error('[Send] Erro ao deletar post:', error);
+        errors.push('Erro ao deletar post: ' + error.message);
+      }
+    }
+
+    if (errors.length > 0) {
+      console.warn('[Send] Rollback concluído com erros:', errors);
+      return { success: false, errors };
+    }
+
+    console.log('[Send] ✓ Rollback concluído com sucesso');
+    return { success: true };
+  },
+
   async schedulePost() {
+    let postId = null;
+    let uploadedFiles = [];
+    
     try {
       console.log('[Send] Iniciando agendamento de post...');
 
@@ -205,31 +311,14 @@ const Send = {
       console.log('[Send] Validações OK');
       Notificacao.show('Iniciando agendamento...', 'info');
 
-      // 1. Criar post no backend
-      const postData = {
-        clientId: Renderer.selectedClient.id,
-        type: Renderer.postType,
-        caption: caption || null,
-        scheduledDate: scheduledDate.toISOString()
-      };
-
-      console.log('[Send] Criando post...');
-      const createdPost = await this.createPost(postData);
-      
-      if (!createdPost.success) {
-        throw new Error('Falha ao criar post');
-      }
-
-      const postId = createdPost.postId;
-      console.log('[Send] Post criado com ID:', postId);
-
-      // 2. Upload de mídias para R2
-      console.log('[Send] Iniciando upload de mídias...');
+      // ETAPA 1: Upload de mídias para R2 PRIMEIRO
+      console.log('[Send] ETAPA 1/3: Upload de mídias para R2...');
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const timestamp = Date.now();
         const randomId = Math.random().toString(36).substring(7);
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
-        const fileName = `POST/${postId}/${timestamp}_${randomId}_${index}.${fileExtension}`;
+        const tempPostId = `TEMP_${timestamp}_${randomId}`;
+        const fileName = `POST/${tempPostId}/${timestamp}_${randomId}_${index}.${fileExtension}`;
 
         return { 
           file: media.file, 
@@ -242,22 +331,56 @@ const Send = {
         Notificacao.showProgress(percentage, current, total);
       };
 
+      // Upload com verificação automática
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
-      console.log('[Send] Uploads concluídos:', uploadResults.length);
+      uploadedFiles = uploadResults.map(r => r.path);
+      
+      console.log('[Send] ✓ ETAPA 1 CONCLUÍDA: Todos os arquivos no R2 e verificados');
 
-      // 3. Preparar dados das mídias para o banco
+      // ETAPA 2: Criar post no Supabase
+      console.log('[Send] ETAPA 2/3: Criando post no Supabase...');
+      const postData = {
+        clientId: Renderer.selectedClient.id,
+        type: Renderer.postType,
+        caption: caption || null,
+        scheduledDate: scheduledDate.toISOString()
+      };
+
+      const createdPost = await this.createPost(postData);
+      
+      if (!createdPost.success) {
+        throw new Error('Falha ao criar post no banco de dados');
+      }
+
+      postId = createdPost.postId;
+      console.log('[Send] ✓ ETAPA 2 CONCLUÍDA: Post criado com ID:', postId);
+
+      // ETAPA 3: Salvar referências das mídias no banco
+      console.log('[Send] ETAPA 3/3: Salvando referências das mídias...');
       const mediaUrls = uploadResults.map((result, index) => ({
         url: result.publicUrl,
         order: index + 1,
         type: Renderer.mediaFiles[index].type
       }));
 
-      console.log('[Send] Salvando mídias no banco de dados...');
       await this.saveMediaToDatabase(postId, mediaUrls);
+      console.log('[Send] ✓ ETAPA 3 CONCLUÍDA: Mídias salvas no banco');
 
-      // Sucesso!
-      console.log('[Send] Agendamento concluído com sucesso!');
-      Notificacao.show('Post agendado com sucesso!', 'success');
+      // VERIFICAÇÃO FINAL
+      console.log('[Send] Realizando verificação final completa...');
+      const finalCheck = await this.verifyAllUploads(uploadedFiles);
+      
+      if (!finalCheck.success) {
+        throw new Error(`Verificação final falhou! ${finalCheck.missingFiles.length} arquivo(s) não encontrado(s) no R2`);
+      }
+
+      // SUCESSO TOTAL!
+      console.log('[Send] ✓✓✓ AGENDAMENTO CONCLUÍDO COM SUCESSO! ✓✓✓');
+      console.log(`[Send] Post ID: ${postId}`);
+      console.log(`[Send] Mídias: ${uploadResults.length} arquivo(s)`);
+      console.log(`[Send] Status: Todos os arquivos verificados e salvos`);
+      
+      Notificacao.show(`Post agendado com sucesso! ${uploadResults.length} mídia(s) enviada(s)`, 'success');
       
       setTimeout(() => {
         Renderer.resetForm();
@@ -265,8 +388,21 @@ const Send = {
       }, 2000);
 
     } catch (error) {
-      console.error('[Send] Erro ao agendar post:', error);
-      Notificacao.show(error.message, 'error');
+      console.error('[Send] ✗✗✗ ERRO NO AGENDAMENTO ✗✗✗');
+      console.error('[Send]', error);
+      
+      // ROLLBACK - Desfazer tudo
+      Notificacao.show('Erro detectado! Revertendo alterações...', 'warning');
+      
+      const rollbackResult = await this.rollbackPost(postId, uploadedFiles);
+      
+      if (rollbackResult.success) {
+        Notificacao.show(`Erro: ${error.message}. Todas as alterações foram revertidas.`, 'error');
+      } else {
+        Notificacao.show(`Erro: ${error.message}. Atenção: algumas alterações podem não ter sido revertidas.`, 'error');
+        console.error('[Send] Erros no rollback:', rollbackResult.errors);
+      }
+      
       Notificacao.hideProgress();
     }
   }
