@@ -138,6 +138,24 @@ window.r2API = {
       return { success: false, error: error.message };
     }
   },
+  // SALVAR MÍDIAS DO POST
+async saveMedia(postId, mediaFiles) {
+  try {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${CONFIG.API_URL}/api/save-media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ postId, mediaFiles })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('[API] Erro ao salvar mídias:', error);
+    return { success: false, error: error.message };
+  }
+},
 
   // GERAR PRESIGNED URLs PARA MÚLTIPLOS ARQUIVOS
   async generateUploadUrls(files) {
@@ -245,3 +263,4 @@ window.r2API = {
 };
 
 window.CONFIG = CONFIG;
+
