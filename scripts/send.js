@@ -18,11 +18,11 @@ const Send = {
     const UPLOAD_START = Date.now();
     
     try {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
       console.log(`[Send] 🚀 INICIO DO UPLOAD: ${fileName}`);
       console.log(`[Send] 📦 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
       console.log(`[Send] ⏰ Horário: ${new Date().toLocaleTimeString('pt-BR')}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
 
       // Mostrar progresso inicial imediatamente
       if (onProgress) {
@@ -104,7 +104,15 @@ const Send = {
               
               lastProgressTime = now;
               lastLoaded = e.loaded;
-              onProgress(percentComplete, e.loaded, e.total);
+              
+              // Enviar estatísticas detalhadas para a notificação
+              onProgress(percentComplete, e.loaded, e.total, {
+                loaded: e.loaded,
+                total: e.total,
+                speed: this.formatSpeed(avgSpeedBps),
+                elapsed: this.formatTime(now - XHR_START),
+                eta: this.formatTime(etaSeconds * 1000)
+              });
             }
           });
         }
@@ -162,8 +170,6 @@ const Send = {
       console.log(`\n[Send] 🔍 ETAPA 3/4: Verificando se arquivo foi salvo no R2...`);
       console.log(`[Send] ⏰ Início: ${new Date(VERIFY_START).toLocaleTimeString('pt-BR')}`);
 
-      // SUBSTITUIR a função verifyWithTimeout em send.js (linha ~165)
-
       const verifyWithTimeout = async (fileName, timeoutMs = 30000) => {
         console.log(`[Send] ⏲️ Timeout de verificação: ${this.formatTime(timeoutMs)}`);
         
@@ -182,15 +188,15 @@ const Send = {
             timeoutPromise
           ]);
         
-        // ✅ CANCELAR O TIMEOUT SE DEU CERTO
-        clearTimeout(timeoutId);
-        
-        return result;
-      } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
-      }
-    };;
+          // ✅ CANCELAR O TIMEOUT SE DEU CERTO
+          clearTimeout(timeoutId);
+          
+          return result;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
+        }
+      };
       
       const verifyResult = await verifyWithTimeout(fileName, 30000);
       
@@ -241,9 +247,9 @@ const Send = {
       const TOTAL_TIME = UPLOAD_END - UPLOAD_START;
       const avgSpeedBps = file.size / (TOTAL_TIME / 1000);
 
-      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
       console.log('✅✅✅ UPLOAD COMPLETO COM SUCESSO ✅✅✅');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
       console.log(`[Send] 📦 Arquivo: ${fileName}`);
       console.log(`[Send] 📊 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
       console.log(`[Send] ⏱️ TEMPO TOTAL: ${this.formatTime(TOTAL_TIME)}`);
@@ -255,7 +261,7 @@ const Send = {
       console.log(`[Send]    2️⃣ Upload XHR: ${this.formatTime(Date.now() - XHR_START)}`);
       console.log(`[Send]    3️⃣ Verificação: ${this.formatTime(VERIFY_TIME)}`);
       console.log(`[Send]    4️⃣ Validação: ${this.formatTime(Date.now() - VALIDATION_START)}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       return {
         success: true,
@@ -273,15 +279,15 @@ const Send = {
       const UPLOAD_END = Date.now();
       const TOTAL_TIME = UPLOAD_END - UPLOAD_START;
       
-      console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
       console.error('❌❌❌ ERRO NO UPLOAD ❌❌❌');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
       console.error(`[Send] 📦 Arquivo: ${fileName}`);
       console.error(`[Send] ⏱️ Tempo até erro: ${this.formatTime(TOTAL_TIME)}`);
       console.error(`[Send] ⏰ Horário do erro: ${new Date(UPLOAD_END).toLocaleTimeString('pt-BR')}`);
       console.error(`[Send] 📋 Erro: ${error.message}`);
       console.error(`[Send] 📚 Stack:`, error.stack);
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       
       return {
         success: false,
@@ -301,9 +307,9 @@ const Send = {
     let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
     let uploadedSize = 0;
 
-    console.log('\n╔════════════════════════════════════════════════════╗');
+    console.log('\n╔═══════════════════════════════════════════════════════╗');
     console.log('║   INICIANDO BATCH DE UPLOADS                       ║');
-    console.log('╚════════════════════════════════════════════════════╝');
+    console.log('╚═══════════════════════════════════════════════════════╝');
     console.log(`[Send] 📦 Total de arquivos: ${files.length}`);
     console.log(`[Send] 📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
     console.log(`[Send] ⏰ Início do batch: ${new Date(BATCH_START).toLocaleTimeString('pt-BR')}`);
@@ -325,10 +331,10 @@ const Send = {
       console.log(`[Send] 📊 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
       console.log(`[Send] 📈 Progresso geral: ${((uploadedSize / totalSize) * 100).toFixed(1)}%`);
 
-      const fileProgressCallback = onProgress ? (percentage, loaded, total) => {
+      const fileProgressCallback = onProgress ? (percentage, loaded, total, stats) => {
         const fileProgress = uploadedSize + loaded;
         const totalProgress = (fileProgress / totalSize) * 80;
-        onProgress(totalProgress, i + 1, files.length);
+        onProgress(totalProgress, i + 1, files.length, stats);
       } : null;
 
       const result = await this.uploadToR2(file, fileName, fileProgressCallback);
@@ -361,9 +367,9 @@ const Send = {
 
     // VERIFICAÇÃO FINAL
     const VERIFY_ALL_START = Date.now();
-    console.log(`\n╔════════════════════════════════════════════════════╗`);
+    console.log(`\n╔═══════════════════════════════════════════════════════╗`);
     console.log(`║   VERIFICAÇÃO FINAL DE TODOS OS ARQUIVOS           ║`);
-    console.log(`╚════════════════════════════════════════════════════╝`);
+    console.log(`╚═══════════════════════════════════════════════════════╝`);
     console.log(`[Send] ⏰ Início: ${new Date(VERIFY_ALL_START).toLocaleTimeString('pt-BR')}`);
     
     const finalVerification = await this.verifyAllUploads(uploadResults.map(r => r.path));
@@ -385,9 +391,9 @@ const Send = {
     const BATCH_TIME = BATCH_END - BATCH_START;
     const avgSpeedBps = totalSize / (BATCH_TIME / 1000);
 
-    console.log(`\n╔════════════════════════════════════════════════════╗`);
+    console.log(`\n╔═══════════════════════════════════════════════════════╗`);
     console.log(`║   BATCH COMPLETO COM SUCESSO                       ║`);
-    console.log(`╚════════════════════════════════════════════════════╝`);
+    console.log(`╚═══════════════════════════════════════════════════════╝`);
     console.log(`[Send] 📦 Arquivos enviados: ${uploadResults.length}/${files.length}`);
     console.log(`[Send] 📊 Total enviado: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
     console.log(`[Send] ⏱️ TEMPO TOTAL DO BATCH: ${this.formatTime(BATCH_TIME)}`);
@@ -504,9 +510,9 @@ const Send = {
   async rollbackPost(postId, uploadedFiles = []) {
     const ROLLBACK_START = Date.now();
     
-    console.log('\n╔════════════════════════════════════════════════════╗');
+    console.log('\n╔═══════════════════════════════════════════════════════╗');
     console.log('║   INICIANDO ROLLBACK                               ║');
-    console.log('╚════════════════════════════════════════════════════╝');
+    console.log('╚═══════════════════════════════════════════════════════╝');
     console.log(`[Send] ⏰ Início: ${new Date(ROLLBACK_START).toLocaleTimeString('pt-BR')}`);
     console.log(`[Send] 🆔 Post ID: ${postId || 'N/A'}`);
     console.log(`[Send] 📦 Arquivos para deletar: ${uploadedFiles.length}`);
@@ -593,11 +599,11 @@ const Send = {
     
     try {
       console.log('\n');
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔══════════════════════════════════════════════════════════════╗');
       console.log('║                                                          ║');
       console.log('║           INICIANDO AGENDAMENTO DE POST                  ║');
       console.log('║                                                          ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚══════════════════════════════════════════════════════════════╝');
       console.log(`[Send] ⏰ Horário de início: ${new Date(SCHEDULE_START).toLocaleTimeString('pt-BR')}`);
       console.log('');
 
@@ -663,9 +669,9 @@ const Send = {
       // ========================================
       // ETAPA 1: UPLOAD DE MÍDIAS PARA R2
       // ========================================
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔═══════════════════════════════════════════════════════════════╗');
       console.log('║   ETAPA 1/3: UPLOAD DE MÍDIAS PARA R2                    ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚═══════════════════════════════════════════════════════════════╝');
       
       const UPLOAD_START = Date.now();
       console.log(`[Send] ⏰ Início: ${new Date(UPLOAD_START).toLocaleTimeString('pt-BR')}`);
@@ -689,8 +695,8 @@ const Send = {
         };
       });
 
-      const onProgress = (percentage, current, total) => {
-        Notificacao.showProgress(percentage, current, total);
+      const onProgress = (percentage, current, total, stats) => {
+        Notificacao.showProgress(percentage, current, total, stats);
       };
 
       const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
@@ -708,9 +714,9 @@ const Send = {
       // ========================================
       // ETAPA 2: CRIAR POST NO SUPABASE
       // ========================================
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔═══════════════════════════════════════════════════════════════╗');
       console.log('║   ETAPA 2/3: CRIAR POST NO SUPABASE                      ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚═══════════════════════════════════════════════════════════════╝');
       
       const CREATE_POST_START = Date.now();
       Notificacao.updateProgressMessage('Salvando informações do post...');
@@ -745,9 +751,9 @@ const Send = {
       // ========================================
       // ETAPA 3: SALVAR REFERÊNCIAS DAS MÍDIAS
       // ========================================
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔═══════════════════════════════════════════════════════════════╗');
       console.log('║   ETAPA 3/3: SALVAR REFERÊNCIAS DAS MÍDIAS              ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚═══════════════════════════════════════════════════════════════╝');
       
       const SAVE_MEDIA_START = Date.now();
       Notificacao.updateProgressMessage('Vinculando mídias ao post...');
@@ -775,9 +781,9 @@ const Send = {
       // ========================================
       // VERIFICAÇÃO FINAL
       // ========================================
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔═══════════════════════════════════════════════════════════════╗');
       console.log('║   VERIFICAÇÃO FINAL                                      ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚═══════════════════════════════════════════════════════════════╝');
       
       const FINAL_VERIFY_START = Date.now();
       Notificacao.updateProgressMessage('Verificando integridade dos arquivos...');
@@ -803,11 +809,11 @@ const Send = {
       const SCHEDULE_TIME = SCHEDULE_END - SCHEDULE_START;
 
       console.log('');
-      console.log('╔══════════════════════════════════════════════════════════╗');
+      console.log('╔══════════════════════════════════════════════════════════════╗');
       console.log('║                                                          ║');
       console.log('║   ✅✅✅ AGENDAMENTO CONCLUÍDO COM SUCESSO ✅✅✅         ║');
       console.log('║                                                          ║');
-      console.log('╚══════════════════════════════════════════════════════════╝');
+      console.log('╚══════════════════════════════════════════════════════════════╝');
       console.log('');
       console.log('📊 RESUMO GERAL:');
       console.log(`[Send] 🆔 Post ID: ${postId}`);
@@ -824,7 +830,7 @@ const Send = {
       console.log(`[Send]    3️⃣ Salvar mídias: ${this.formatTime(SAVE_MEDIA_TIME)}`);
       console.log(`[Send]    🔍 Verificação final: ${this.formatTime(FINAL_VERIFY_TIME)}`);
       console.log('');
-      console.log('══════════════════════════════════════════════════════════');
+      console.log('═══════════════════════════════════════════════════════════════');
       console.log('');
 
       // Atualizar para 100%
@@ -847,11 +853,11 @@ const Send = {
       const SCHEDULE_TIME = SCHEDULE_END - SCHEDULE_START;
 
       console.error('');
-      console.error('╔══════════════════════════════════════════════════════════╗');
+      console.error('╔══════════════════════════════════════════════════════════════╗');
       console.error('║                                                          ║');
       console.error('║   ❌❌❌ ERRO NO AGENDAMENTO ❌❌❌                       ║');
       console.error('║                                                          ║');
-      console.error('╚══════════════════════════════════════════════════════════╝');
+      console.error('╚══════════════════════════════════════════════════════════════╝');
       console.error('');
       console.error(`[Send] ⏱️ Tempo até erro: ${this.formatTime(SCHEDULE_TIME)}`);
       console.error(`[Send] ⏰ Horário do erro: ${new Date(SCHEDULE_END).toLocaleTimeString('pt-BR')}`);
