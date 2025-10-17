@@ -837,16 +837,24 @@ const Send = {
       Notificacao.showProgress(100, uploadResults.length, uploadResults.length);
       Notificacao.updateProgressMessage(`✓ Concluído! ${uploadResults.length} mídia(s)`);
       
-      // Aguardar antes de mostrar mensagem
+      // Aguardar antes de mostrar alerta de conclusão
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      Notificacao.show(`Post agendado com sucesso! ${uploadResults.length} mídia(s) enviada(s)`, 'success');
+      // Mostrar alerta de conclusão que só some ao tocar
+      Notificacao.showCompletionAlert(
+        true, 
+        `Post agendado com sucesso!`,
+        `${uploadResults.length} mídia(s) enviada(s) • ${this.formatTime(SCHEDULE_TIME)}`
+      );
       
-      // Aguardar antes de resetar
-      setTimeout(() => {
-        Renderer.resetForm();
-        Notificacao.hideProgress();
-      }, 2500);
+      // Resetar formulário após fechar o alerta
+      const waitForClose = setInterval(() => {
+        const container = document.getElementById('progress-container');
+        if (!container || !container.classList.contains('show')) {
+          clearInterval(waitForClose);
+          Renderer.resetForm();
+        }
+      }, 100);
 
     } catch (error) {
       const SCHEDULE_END = Date.now();
@@ -872,13 +880,19 @@ const Send = {
       const rollbackResult = await this.rollbackPost(postId, uploadedFiles);
       
       if (rollbackResult.success) {
-        Notificacao.show(`Erro: ${error.message}. Todas as alterações foram revertidas.`, 'error');
+        Notificacao.showCompletionAlert(
+          false,
+          'Erro no agendamento',
+          error.message
+        );
       } else {
-        Notificacao.show(`Erro: ${error.message}. Atenção: algumas alterações podem não ter sido revertidas.`, 'error');
+        Notificacao.showCompletionAlert(
+          false,
+          'Erro no agendamento',
+          error.message + ' (Algumas alterações podem não ter sido revertidas)'
+        );
         console.error('[Send] Erros no rollback:', rollbackResult.errors);
       }
-      
-      Notificacao.hideProgress();
     }
   }
 };
