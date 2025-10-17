@@ -38,6 +38,7 @@ const Notificacao = {
     }
 
     container.classList.add('show');
+    container.classList.remove('completed', 'error');
     
     // Garantir que a barra apareça imediatamente, mesmo com 0%
     fill.style.transition = percentage > 0 ? 'width 0.3s ease' : 'none';
@@ -47,10 +48,10 @@ const Notificacao = {
     
     // Mostrar mensagem apropriada baseada no progresso
     if (percentage === 0 || percentage < 1) {
-      filesText.textContent = 'Preparando upload...';
+      filesText.innerHTML = 'Preparando upload...';
       if (statsText) statsText.textContent = '';
     } else if (percentage >= 100) {
-      filesText.textContent = `✓ Concluído! ${total} arquivo(s)`;
+      filesText.innerHTML = '<i class="ph ph-check-circle"></i> Concluído! ' + total + ' arquivo(s)';
       if (statsText) statsText.textContent = '';
     } else {
       filesText.textContent = `Enviando arquivo ${current} de ${total}`;
@@ -64,20 +65,67 @@ const Notificacao = {
         }
         
         if (stats.speed) {
-          parts.push(stats.speed);
+          parts.push(`<i class="ph ph-gauge"></i> ${stats.speed}`);
         }
         
         if (stats.elapsed) {
-          parts.push(`⏱️ ${stats.elapsed}`);
+          parts.push(`<i class="ph ph-timer"></i> ${stats.elapsed}`);
         }
         
         if (stats.eta) {
-          parts.push(`⏳ ${stats.eta}`);
+          parts.push(`<i class="ph ph-hourglass"></i> ${stats.eta}`);
         }
         
-        statsText.textContent = parts.join(' • ');
+        statsText.innerHTML = parts.join(' • ');
       }
     }
+  },
+
+  showCompletionAlert(success, message, details = null) {
+    const container = document.getElementById('progress-container');
+    const fill = document.getElementById('progress-bar-fill');
+    const percentText = document.getElementById('progress-percentage');
+    const filesText = document.getElementById('progress-files');
+    const statsText = document.getElementById('progress-stats');
+
+    if (!container) return;
+
+    // Remover listener anterior se existir
+    if (this._clickListener) {
+      document.removeEventListener('click', this._clickListener);
+      document.removeEventListener('touchstart', this._clickListener);
+    }
+
+    container.classList.add('show');
+    container.classList.remove('completed', 'error');
+    
+    if (success) {
+      container.classList.add('completed');
+      fill.style.width = '100%';
+      percentText.innerHTML = '<i class="ph-fill ph-check-circle"></i>';
+      filesText.innerHTML = '<i class="ph ph-check-circle"></i> ' + message;
+      if (statsText) statsText.innerHTML = details || 'Toque na tela para continuar';
+    } else {
+      container.classList.add('error');
+      fill.style.width = '0%';
+      percentText.innerHTML = '<i class="ph-fill ph-x-circle"></i>';
+      filesText.innerHTML = '<i class="ph ph-x-circle"></i> ' + message;
+      if (statsText) statsText.innerHTML = details || 'Toque na tela para continuar';
+    }
+
+    // Listener para fechar ao clicar/tocar em qualquer lugar
+    this._clickListener = () => {
+      this.hideProgress();
+      document.removeEventListener('click', this._clickListener);
+      document.removeEventListener('touchstart', this._clickListener);
+      this._clickListener = null;
+    };
+
+    // Pequeno delay para evitar fechar imediatamente
+    setTimeout(() => {
+      document.addEventListener('click', this._clickListener);
+      document.addEventListener('touchstart', this._clickListener);
+    }, 300);
   },
 
   formatSize(bytes) {
