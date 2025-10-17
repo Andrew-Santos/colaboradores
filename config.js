@@ -272,7 +272,184 @@ window.r2API = {
       console.error('[R2 API] Erro ao deletar arquivos:', error);
       return { success: false, error: error.message };
     }
+  },
+  /**
+ * COPIAR E COLAR isso no seu config.js existente (no objeto window.r2API)
+ * 
+ * Não remova as funções existentes, apenas adicione essas
+ */
+
+// ===== FUNÇÕES MULTIPART (ADICIONAR AO window.r2API) =====
+
+async initiateMultipartUpload(fileName, contentType, fileSize) {
+  try {
+    console.log('[R2 API] Iniciando multipart upload');
+    console.log('[R2 API] Arquivo:', fileName);
+    console.log('[R2 API] Tipo:', contentType);
+    console.log('[R2 API] Tamanho:', (fileSize / 1024 / 1024).toFixed(2), 'MB');
+
+    const response = await fetch(`${this.apiUrl}/multipart/initiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        fileName: fileName,
+        contentType: contentType,
+        fileSize: fileSize
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[R2 API] Erro ao iniciar multipart:', data.error);
+      return { success: false, error: data.error || 'Erro ao iniciar multipart' };
+    }
+
+    console.log('[R2 API] Multipart iniciado, uploadId:', data.uploadId);
+    return { success: true, uploadId: data.uploadId };
+
+  } catch (error) {
+    console.error('[R2 API] Erro ao iniciar multipart:', error);
+    return { success: false, error: error.message };
   }
+},
+
+async getMultipartPartUrl(uploadId, partNumber) {
+  try {
+    console.log(`[R2 API] Obtendo URL para part ${partNumber}`);
+
+    const response = await fetch(`${this.apiUrl}/multipart/get-part-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uploadId: uploadId,
+        partNumber: partNumber
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(`[R2 API] Erro ao obter URL para part:`, data.error);
+      return { success: false, error: data.error };
+    }
+
+    console.log(`[R2 API] URL obtida para part ${partNumber}`);
+    return { 
+      success: true, 
+      uploadUrl: data.uploadUrl,
+      expiresIn: data.expiresIn
+    };
+
+  } catch (error) {
+    console.error('[R2 API] Erro ao obter URL:', error);
+    return { success: false, error: error.message };
+  }
+},
+
+async registerMultipartPart(uploadId, partNumber, eTag) {
+  try {
+    console.log(`[R2 API] Registrando part ${partNumber} (ETag: ${eTag})`);
+
+    const response = await fetch(`${this.apiUrl}/multipart/register-part`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uploadId: uploadId,
+        partNumber: partNumber,
+        eTag: eTag
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[R2 API] Erro ao registrar part:', data.error);
+      return { success: false, error: data.error };
+    }
+
+    console.log(`[R2 API] Part ${partNumber} registrada (${data.totalParts} total)`);
+    return { success: true, totalParts: data.totalParts };
+
+  } catch (error) {
+    console.error('[R2 API] Erro ao registrar part:', error);
+    return { success: false, error: error.message };
+  }
+},
+
+async completeMultipartUpload(uploadId) {
+  try {
+    console.log('[R2 API] Completando multipart upload');
+
+    const response = await fetch(`${this.apiUrl}/multipart/complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uploadId: uploadId
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[R2 API] Erro ao completar multipart:', data.error);
+      return { success: false, error: data.error };
+    }
+
+    console.log('[R2 API] Multipart completado');
+    console.log('[R2 API] Arquivo:', data.fileName);
+    console.log('[R2 API] URL:', data.publicUrl);
+    
+    return { 
+      success: true, 
+      fileName: data.fileName,
+      publicUrl: data.publicUrl,
+      message: data.message
+    };
+
+  } catch (error) {
+    console.error('[R2 API] Erro ao completar multipart:', error);
+    return { success: false, error: error.message };
+  }
+},
+
+async abortMultipartUpload(uploadId) {
+  try {
+    console.log('[R2 API] Abortando multipart upload');
+
+    const response = await fetch(`${this.apiUrl}/multipart/abort`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uploadId: uploadId
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[R2 API] Erro ao abortar:', data.error);
+      return { success: false, error: data.error };
+    }
+
+    console.log('[R2 API] Upload abortado com sucesso');
+    return { success: true, message: data.message };
+
+  } catch (error) {
+    console.error('[R2 API] Erro ao abortar:', error);
+    return { success: false, error: error.message };
+  }
+}
 };
 
 window.CONFIG = CONFIG;
