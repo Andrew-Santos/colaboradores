@@ -667,8 +667,8 @@ textarea.form-control {
 
 .progress-container {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 50%;
+  right: 40px;
   width: auto;
   background: white;
   padding: 10px 14px;
@@ -676,7 +676,7 @@ textarea.form-control {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10000;
   display: none;
-  max-width: 280px;
+  max-width: 90%;
 }
 
 .progress-container.show {
@@ -1179,3 +1179,4 @@ textarea.form-control {
     font-size: 16px;
   }
 }
+
