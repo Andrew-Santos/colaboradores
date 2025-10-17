@@ -278,117 +278,109 @@ const Send = {
   },
 
   async uploadMultipleFiles(files, onProgress = null) {
-  const BATCH_START = Date.now();
-  const uploadResults = [];
-  let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
+    const BATCH_START = Date.now();
+    const uploadResults = [];
+    const failedUploads = [];
+    let totalSize = files.reduce((acc, f) => acc + f.file.size, 0);
+    let uploadedSize = 0;
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('║   BATCH DE UPLOADS COM PARALELIZAÇÃO                 ║');
-  console.log('═'.repeat(60));
-  console.log(`[Send] 📦 Total de arquivos: ${files.length}`);
-  console.log(`[Send] 📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
-  console.log(`[Send] ⏰ Início do batch: ${new Date(BATCH_START).toLocaleTimeString('pt-BR')}`);
-  console.log('');
+    console.log('\n╔════════════════════════════════════════════════════╗');
+    console.log('║   INICIANDO BATCH DE UPLOADS                       ║');
+    console.log('╚════════════════════════════════════════════════════╝');
+    console.log(`[Send] 📦 Total de arquivos: ${files.length}`);
+    console.log(`[Send] 📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`[Send] ⏰ Início do batch: ${new Date(BATCH_START).toLocaleTimeString('pt-BR')}`);
+    console.log('');
 
-  if (onProgress) {
-    onProgress(1, 0, files.length);
-  }
+    // Mostrar progresso inicial
+    if (onProgress) {
+      onProgress(1, 0, files.length);
+    }
 
-  for (let i = 0; i < files.length; i++) {
-    const { file, fileName } = files[i];
-    const FILE_START = Date.now();
+    for (let i = 0; i < files.length; i++) {
+      const { file, fileName } = files[i];
+      const FILE_START = Date.now();
 
-    console.log(`\n╭${'─'.repeat(58)}╮`);
-    console.log(`│ ARQUIVO ${i + 1} DE ${files.length}`);
-    console.log(`╰${'─'.repeat(58)}╯`);
-    console.log(`[Send] 📄 Nome: ${fileName}`);
-    console.log(`[Send] 📊 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+      console.log(`\n╭─────────────────────────────────────────────────────╮`);
+      console.log(`│ ARQUIVO ${i + 1} DE ${files.length}`);
+      console.log(`╰─────────────────────────────────────────────────────╯`);
+      console.log(`[Send] 📄 Nome: ${fileName}`);
+      console.log(`[Send] 📊 Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+      console.log(`[Send] 📈 Progresso geral: ${((uploadedSize / totalSize) * 100).toFixed(1)}%`);
 
-    try {
-      // Usar ParallelUpload para cada arquivo
-      const result = await window.ParallelUpload.uploadFile(
-        file, 
-        fileName,
-        (percentage, current, total, avgSpeed) => {
-          // Converter progresso de arquivo individual para progresso geral do batch
-          const fileProgress = ((i + (percentage / 100)) / files.length) * 80;
-          if (onProgress) {
-            onProgress(fileProgress, i + 1, files.length);
-          }
-        }
-      );
+      const fileProgressCallback = onProgress ? (percentage, loaded, total) => {
+        const fileProgress = uploadedSize + loaded;
+        const totalProgress = (fileProgress / totalSize) * 80;
+        onProgress(totalProgress, i + 1, files.length);
+      } : null;
+
+      const result = await this.uploadToR2(file, fileName, fileProgressCallback);
+
+      const FILE_END = Date.now();
+      const FILE_TIME = FILE_END - FILE_START;
 
       if (!result.success) {
-        throw new Error(result.error || 'Upload paralelo falhou');
+        console.error(`\n❌ FALHA NO ARQUIVO ${i + 1}/${files.length}`);
+        console.error(`[Send] ⏱️ Tempo até falha: ${this.formatTime(FILE_TIME)}`);
+        console.error(`[Send] 📋 Erro: ${result.error}`);
+        
+        failedUploads.push({
+          fileName,
+          index: i + 1,
+          error: result.error,
+          time: FILE_TIME
+        });
+        
+        throw new Error(`Falha no upload do arquivo "${file.name}" (${i + 1}/${files.length}): ${result.error}`);
       }
 
-      uploadResults.push({
-        success: true,
-        path: fileName,
-        publicUrl: `${window.CONFIG?.R2_PUBLIC_URL || 'https://pub-4371349196374d9dae204ee83a635609.r2.dev'}/${fileName}`,
-        verified: true,
-        stats: {
-          totalTime: result.totalTime,
-          avgSpeedBps: result.avgSpeed,
-          chunks: result.chunks
-        }
-      });
-
-      const FILE_TIME = Date.now() - FILE_START;
+      uploadedSize += file.size;
+      uploadResults.push(result);
+      
       console.log(`\n✅ ARQUIVO ${i + 1}/${files.length} CONCLUÍDO`);
-      console.log(`[Send] ⏱️ Tempo: ${this.formatTime(FILE_TIME)}`);
-      console.log(`[Send] 📈 Progresso do batch: ${(((i + 1) / files.length) * 100).toFixed(1)}%`);
-
-    } catch (error) {
-      console.error(`\n❌ FALHA NO ARQUIVO ${i + 1}/${files.length}`);
-      console.error(`[Send] 📋 Erro: ${error.message}`);
-      throw new Error(`Falha no upload do arquivo "${file.name}" (${i + 1}/${files.length}): ${error.message}`);
+      console.log(`[Send] ⏱️ Tempo deste arquivo: ${this.formatTime(FILE_TIME)}`);
+      console.log(`[Send] 📈 Progresso do batch: ${((uploadedSize / totalSize) * 100).toFixed(1)}%`);
     }
-  }
 
-  // VERIFICAÇÃO FINAL (OTIMIZADA)
-  const VERIFY_ALL_START = Date.now();
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`║   VERIFICAÇÃO FINAL DE TODOS OS ARQUIVOS           ║`);
-  console.log(`${'═'.repeat(60)}`);
-  console.log(`[Send] ⏰ Início: ${new Date(VERIFY_ALL_START).toLocaleTimeString('pt-BR')}`);
+    // VERIFICAÇÃO FINAL
+    const VERIFY_ALL_START = Date.now();
+    console.log(`\n╔════════════════════════════════════════════════════╗`);
+    console.log(`║   VERIFICAÇÃO FINAL DE TODOS OS ARQUIVOS           ║`);
+    console.log(`╚════════════════════════════════════════════════════╝`);
+    console.log(`[Send] ⏰ Início: ${new Date(VERIFY_ALL_START).toLocaleTimeString('pt-BR')}`);
+    
+    const finalVerification = await this.verifyAllUploads(uploadResults.map(r => r.path));
+    
+    const VERIFY_ALL_END = Date.now();
+    const VERIFY_ALL_TIME = VERIFY_ALL_END - VERIFY_ALL_START;
 
-  const fileNames = uploadResults.map(r => r.path);
-  const finalVerification = await this.verifyAllUploads(fileNames);
+    if (!finalVerification.success) {
+      console.error(`[Send] ❌ Verificação final falhou`);
+      console.error(`[Send] ⏱️ Tempo de verificação: ${this.formatTime(VERIFY_ALL_TIME)}`);
+      console.error(`[Send] 📋 Arquivos ausentes:`, finalVerification.missingFiles);
+      throw new Error(`Verificação final falhou: ${finalVerification.missingFiles.length} arquivo(s) não encontrado(s)`);
+    }
 
-  const VERIFY_ALL_TIME = Date.now() - VERIFY_ALL_START;
+    console.log(`[Send] ✅ Todos os arquivos verificados`);
+    console.log(`[Send] ⏱️ Tempo de verificação: ${this.formatTime(VERIFY_ALL_TIME)}`);
 
-  if (!finalVerification.success) {
-    console.error(`[Send] ❌ Verificação final falhou`);
-    console.error(`[Send] ⏱️ Tempo: ${this.formatTime(VERIFY_ALL_TIME)}`);
-    throw new Error(`Verificação final falhou: ${finalVerification.missingFiles.length} arquivo(s) não encontrado(s)`);
-  }
+    const BATCH_END = Date.now();
+    const BATCH_TIME = BATCH_END - BATCH_START;
+    const avgSpeedBps = totalSize / (BATCH_TIME / 1000);
 
-  console.log(`[Send] ✅ Todos os arquivos verificados`);
-  console.log(`[Send] ⏱️ Tempo: ${this.formatTime(VERIFY_ALL_TIME)}`);
+    console.log(`\n╔════════════════════════════════════════════════════╗`);
+    console.log(`║   BATCH COMPLETO COM SUCESSO                       ║`);
+    console.log(`╚════════════════════════════════════════════════════╝`);
+    console.log(`[Send] 📦 Arquivos enviados: ${uploadResults.length}/${files.length}`);
+    console.log(`[Send] 📊 Total enviado: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`[Send] ⏱️ TEMPO TOTAL DO BATCH: ${this.formatTime(BATCH_TIME)}`);
+    console.log(`[Send] 🚀 Velocidade média: ${this.formatSpeed(avgSpeedBps)}`);
+    console.log(`[Send] ⏰ Início: ${new Date(BATCH_START).toLocaleTimeString('pt-BR')}`);
+    console.log(`[Send] ⏰ Fim: ${new Date(BATCH_END).toLocaleTimeString('pt-BR')}`);
+    console.log('');
 
-  // RESUMO FINAL
-  const BATCH_TIME = Date.now() - BATCH_START;
-  const avgSpeedBps = totalSize / (BATCH_TIME / 1000);
-
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`║   BATCH COMPLETO COM SUCESSO                       ║`);
-  console.log(`${'═'.repeat(60)}`);
-  console.log(`[Send] 📦 Arquivos enviados: ${uploadResults.length}/${files.length}`);
-  console.log(`[Send] 📊 Total enviado: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
-  console.log(`[Send] ⏱️ TEMPO TOTAL: ${this.formatTime(BATCH_TIME)}`);
-  console.log(`[Send] 🚀 Velocidade média: ${this.formatSpeed(avgSpeedBps)}`);
-  console.log(`[Send] ⏰ Início: ${new Date(BATCH_START).toLocaleTimeString('pt-BR')}`);
-  console.log(`[Send] ⏰ Fim: ${new Date(Date.now()).toLocaleTimeString('pt-BR')}`);
-  console.log('');
-
-  // Atualizar progresso para 80% (uploads feitos, segue com criação de post)
-  if (onProgress) {
-    onProgress(80, files.length, files.length);
-  }
-
-  return uploadResults;
-},
+    return uploadResults;
+  },
 
   async verifyAllUploads(fileNames) {
     const VERIFY_START = Date.now();
