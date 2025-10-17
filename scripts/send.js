@@ -162,18 +162,35 @@ const Send = {
       console.log(`\n[Send] 🔍 ETAPA 3/4: Verificando se arquivo foi salvo no R2...`);
       console.log(`[Send] ⏰ Início: ${new Date(VERIFY_START).toLocaleTimeString('pt-BR')}`);
 
+      // SUBSTITUIR a função verifyWithTimeout em send.js (linha ~165)
+
       const verifyWithTimeout = async (fileName, timeoutMs = 30000) => {
         console.log(`[Send] ⏲️ Timeout de verificação: ${this.formatTime(timeoutMs)}`);
-        return Promise.race([
-          window.r2API.verifyUpload(fileName),
-          new Promise((_, reject) => 
-            setTimeout(() => {
-              console.error(`[Send] ⏰ Timeout na verificação após ${this.formatTime(timeoutMs)}`);
-              reject(new Error('Timeout na verificação'));
-            }, timeoutMs)
-          )
-        ]);
-      };
+        
+        let timeoutId;
+        
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            console.error(`[Send] ⏰ Timeout na verificação após ${this.formatTime(timeoutMs)}`);
+            reject(new Error('Timeout na verificação'));
+          }, timeoutMs);
+        });
+        
+        try {
+          const result = await Promise.race([
+            window.r2API.verifyUpload(fileName),
+            timeoutPromise
+          ]);
+        
+        // ✅ CANCELAR O TIMEOUT SE DEU CERTO
+        clearTimeout(timeoutId);
+        
+        return result;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+      }
+    };;
       
       const verifyResult = await verifyWithTimeout(fileName, 30000);
       
