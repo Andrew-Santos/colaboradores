@@ -207,6 +207,7 @@ const ParallelUpload = {
       console.log('\n' + '━'.repeat(60));
       console.log(`[ParallelUpload] INICIANDO UPLOAD: ${fileName}`);
       console.log(`[ParallelUpload] Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+      console.log(`[ParallelUpload] Tipo: ${file.type}`);
       console.log('━'.repeat(60));
 
       // ETAPA 1: Dividir em chunks
@@ -220,7 +221,8 @@ const ParallelUpload = {
 
       const urlRequests = chunks.map((chunk, index) => {
         const chunkFileName = `${fileName}.part${index}`;
-        return window.r2API.generateUploadUrl(chunkFileName, 'application/octet-stream', chunk.size);
+        // Usar o tipo MIME original do arquivo, não application/octet-stream
+        return window.r2API.generateUploadUrl(chunkFileName, file.type, chunk.size);
       });
 
       const urlResults = await Promise.all(urlRequests);
