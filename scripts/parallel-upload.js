@@ -1,21 +1,19 @@
 /**
- * ParallelUpload - Upload de arquivos com chunks paralelos otimizado para R2
+ * ParallelUpload - Upload paralelo com Multipart do R2
  * 
- * Características:
- * - Chunks de 40MB (adaptável)
- * - 3 uploads simultâneos (não sobrecarrega)
- * - Retry automático com backoff exponencial
- * - Integração perfeita com window.r2API existente
- * - Sem mudanças no backend
+ * Fluxo:
+ * 1. Iniciar sessão multipart (uploadId)
+ * 2. Dividir arquivo em chunks
+ * 3. Fazer upload paralelo dos chunks
+ * 4. Registrar ETags de cada chunk
+ * 5. Completar multipart (juntar tudo)
  */
 
 const ParallelUpload = {
-  // ===== CONFIGURAÇÕES =====
-  CHUNK_SIZE: 40 * 1024 * 1024, // 40MB por chunk (reduz overhead vs 5MB)
-  MAX_CONCURRENT: 3, // 3 uploads simultâneos (3.3 Mbps * 3 ≈ 10 Mbps por arquivo)
-  MAX_RETRIES: 2, // 2 tentativas é suficiente com boa conexão
+  CHUNK_SIZE: 40 * 1024 * 1024, // 40MB
+  MAX_CONCURRENT: 3,
+  MAX_RETRIES: 2,
   
-  // ===== UTILITÁRIOS =====
   formatTime(ms) {
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -24,14 +22,10 @@ const ParallelUpload = {
 
   formatSpeed(bytesPerSecond) {
     const mbps = (bytesPerSecond * 8) / 1000000;
-    const kbps = (bytesPerSecond * 8) / 1000;
     if (mbps >= 1) return `${mbps.toFixed(2)} Mbps`;
-    return `${kbps.toFixed(2)} Kbps`;
+    return `${((bytesPerSecond * 8) / 1000).toFixed(2)} Kbps`;
   },
 
-  /**
-   * Dividir arquivo em chunks
-   */
   createChunks(file) {
     const chunks = [];
     const totalChunks = Math.ceil(file.size / this.CHUNK_SIZE);
@@ -42,62 +36,50 @@ const ParallelUpload = {
 
       chunks.push({
         index: i,
+        partNumber: i + 1, // R2 usa 1-based indexing
         blob: file.slice(start, end),
-        size: end - start,
-        start: start,
-        end: end
+        size: end - start
       });
     }
 
     return chunks;
   },
 
-  /**
-   * Upload de um chunk único via presigned URL
-   */
-  async uploadChunk(chunkBlob, uploadUrl, chunkIndex, totalChunks) {
+  async uploadChunk(chunkBlob, uploadUrl, partNumber, totalChunks) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const CHUNK_START = Date.now();
-      let lastProgressTime = CHUNK_START;
-      let lastLoaded = 0;
 
-      // Timeout: 60 segundos por chunk (40MB a ~3 Mbps = ~100 segundos, com margem)
       xhr.timeout = 120000;
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
-          const now = Date.now();
-          const timeDiff = (now - lastProgressTime) / 1000;
-          const bytesDiff = e.loaded - lastLoaded;
-          const speedBps = timeDiff > 0 ? bytesDiff / timeDiff : 0;
-          
-          // Log apenas a cada 20% ou 10 segundos
-          if (e.loaded === e.total || now - lastProgressTime > 10000 || e.loaded / e.total > 0.2) {
-            const progress = (e.loaded / e.total) * 100;
-            console.log(`[ParallelUpload] Chunk ${chunkIndex + 1}/${totalChunks}: ${progress.toFixed(0)}% - ${this.formatSpeed(speedBps)}`);
-            lastProgressTime = now;
-            lastLoaded = e.loaded;
+          const progress = (e.loaded / e.total) * 100;
+          if (progress % 25 < 1 || e.loaded === e.total) {
+            const speedBps = e.loaded / ((Date.now() - CHUNK_START) / 1000);
+            console.log(`[ParallelUpload] Part ${partNumber}/${totalChunks}: ${progress.toFixed(0)}% - ${this.formatSpeed(speedBps)}`);
           }
         }
       });
 
       xhr.addEventListener('load', () => {
-        const CHUNK_TIME = Date.now() - CHUNK_START;
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ success: true, time: CHUNK_TIME });
+          // Extrair ETag do response header
+          const eTag = xhr.getResponseHeader('ETag');
+          console.log(`[ParallelUpload] Part ${partNumber} completo (ETag: ${eTag})`);
+          resolve({ 
+            success: true, 
+            partNumber: partNumber,
+            eTag: eTag,
+            time: Date.now() - CHUNK_START 
+          });
         } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          reject(new Error(`HTTP ${xhr.status}`));
         }
       });
 
-      xhr.addEventListener('error', () => {
-        reject(new Error('Erro de rede no chunk'));
-      });
-
-      xhr.addEventListener('timeout', () => {
-        reject(new Error('Timeout no chunk (120s)'));
-      });
+      xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
+      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
 
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -105,40 +87,32 @@ const ParallelUpload = {
     });
   },
 
-  /**
-   * Upload com retry automático
-   */
-  async uploadChunkWithRetry(chunkBlob, uploadUrl, chunkIndex, totalChunks) {
+  async uploadChunkWithRetry(chunkBlob, uploadUrl, partNumber, totalChunks) {
     let lastError;
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
       try {
         if (attempt > 1) {
-          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 3000);
-          console.warn(`[ParallelUpload] Chunk ${chunkIndex + 1}: Tentativa ${attempt}/${this.MAX_RETRIES}, aguardando ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          const wait = Math.min(1000 * Math.pow(2, attempt - 1), 3000);
+          console.warn(`[ParallelUpload] Part ${partNumber}: Tentativa ${attempt}/${this.MAX_RETRIES}, aguardando ${wait}ms`);
+          await new Promise(resolve => setTimeout(resolve, wait));
         }
-
-        return await this.uploadChunk(chunkBlob, uploadUrl, chunkIndex, totalChunks);
+        return await this.uploadChunk(chunkBlob, uploadUrl, partNumber, totalChunks);
       } catch (error) {
         lastError = error;
       }
     }
-
-    throw new Error(`Chunk ${chunkIndex + 1} falhou após ${this.MAX_RETRIES} tentativas: ${lastError.message}`);
+    throw lastError;
   },
 
-  /**
-   * Gerenciar fila de uploads paralelos
-   */
-  async uploadChunksInParallel(chunks, uploadUrls, onProgress = null) {
+  async uploadChunksInParallel(chunks, uploadId, onProgress = null) {
     const QUEUE_START = Date.now();
     const totalChunks = chunks.length;
     const totalSize = chunks.reduce((acc, c) => acc + c.size, 0);
     let completedChunks = 0;
     let uploadedBytes = 0;
 
-    console.log(`\n[ParallelUpload] Iniciando upload paralelo: ${totalChunks} chunks, máx ${this.MAX_CONCURRENT} simultâneos`);
+    console.log(`[ParallelUpload] Iniciando ${totalChunks} chunks com até ${this.MAX_CONCURRENT} paralelos`);
 
     const results = [];
     const executing = [];
@@ -149,23 +123,50 @@ const ParallelUpload = {
 
       const currentIndex = queueIndex++;
       const chunk = chunks[currentIndex];
-      const uploadUrl = uploadUrls[currentIndex];
 
-      const promise = this.uploadChunkWithRetry(chunk.blob, uploadUrl, currentIndex, totalChunks)
-        .then(result => {
-          completedChunks++;
-          uploadedBytes += chunk.size;
+      const promise = (async () => {
+        // Obter presigned URL para este chunk
+        console.log(`[ParallelUpload] Obtendo URL para part ${chunk.partNumber}...`);
+        const urlResult = await window.r2API.getMultipartPartUrl(uploadId, chunk.partNumber);
+        
+        if (!urlResult.success) {
+          throw new Error(`Erro ao obter URL: ${urlResult.error}`);
+        }
 
-          const progress = (uploadedBytes / totalSize) * 100;
-          const elapsed = (Date.now() - QUEUE_START) / 1000;
-          const avgSpeedBps = elapsed > 0 ? uploadedBytes / elapsed : 0;
+        // Fazer upload do chunk
+        const uploadResult = await this.uploadChunkWithRetry(
+          chunk.blob,
+          urlResult.uploadUrl,
+          chunk.partNumber,
+          totalChunks
+        );
 
-          if (onProgress) {
-            onProgress(progress, completedChunks, totalChunks, avgSpeedBps);
-          }
+        // Registrar o ETag no backend
+        console.log(`[ParallelUpload] Registrando ETag para part ${chunk.partNumber}...`);
+        const registerResult = await window.r2API.registerMultipartPart(
+          uploadId,
+          chunk.partNumber,
+          uploadResult.eTag
+        );
 
-          results[currentIndex] = result;
-        })
+        if (!registerResult.success) {
+          throw new Error(`Erro ao registrar part: ${registerResult.error}`);
+        }
+
+        // Atualizar progresso
+        completedChunks++;
+        uploadedBytes += chunk.size;
+
+        const progress = (uploadedBytes / totalSize) * 100;
+        const elapsed = (Date.now() - QUEUE_START) / 1000;
+        const avgSpeed = elapsed > 0 ? uploadedBytes / elapsed : 0;
+
+        if (onProgress) {
+          onProgress(progress, completedChunks, totalChunks, avgSpeed);
+        }
+
+        results[currentIndex] = uploadResult;
+      })()
         .finally(() => {
           executing.splice(executing.indexOf(promise), 1);
           return processNext();
@@ -180,125 +181,116 @@ const ParallelUpload = {
       return promise;
     };
 
-    // Iniciar primeiros processsos
     const initialPromises = [];
     for (let i = 0; i < Math.min(this.MAX_CONCURRENT, totalChunks); i++) {
       initialPromises.push(processNext());
     }
 
-    // Aguardar todos
     await Promise.all([...initialPromises, ...executing]);
 
     const QUEUE_TIME = Date.now() - QUEUE_START;
     const finalSpeed = totalSize / (QUEUE_TIME / 1000);
 
-    console.log(`[ParallelUpload] Todos os chunks concluídos: ${this.formatTime(QUEUE_TIME)} - Velocidade média: ${this.formatSpeed(finalSpeed)}`);
+    console.log(`[ParallelUpload] Todos chunks completos: ${this.formatTime(QUEUE_TIME)} - Média: ${this.formatSpeed(finalSpeed)}`);
 
-    return { totalTime: QUEUE_TIME, avgSpeedBps: finalSpeed, results };
+    return { totalTime: QUEUE_TIME, avgSpeedBps: finalSpeed, results, totalChunks };
   },
 
-  /**
-   * Função principal: Upload paralelo de arquivo
-   */
   async uploadFile(file, fileName, onProgress = null) {
     const TOTAL_START = Date.now();
+    let uploadId = null;
 
     try {
       console.log('\n' + '━'.repeat(60));
-      console.log(`[ParallelUpload] INICIANDO UPLOAD: ${fileName}`);
-      console.log(`[ParallelUpload] Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
-      console.log(`[ParallelUpload] Tipo: ${file.type}`);
+      console.log(`[ParallelUpload] INICIANDO: ${fileName}`);
+      console.log(`[ParallelUpload] Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB | Tipo: ${file.type}`);
       console.log('━'.repeat(60));
 
       // ETAPA 1: Dividir em chunks
-      console.log('\n[ParallelUpload] Etapa 1: Dividindo arquivo em chunks...');
+      console.log('\n[ParallelUpload] Etapa 1: Dividindo em chunks...');
       const chunks = this.createChunks(file);
       console.log(`[ParallelUpload] ${chunks.length} chunks criados (${(this.CHUNK_SIZE / (1024 * 1024)).toFixed(0)}MB cada)`);
 
-      // ETAPA 2: Gerar presigned URLs para cada chunk
-      console.log('\n[ParallelUpload] Etapa 2: Gerando presigned URLs...');
-      const URL_START = Date.now();
+      // ETAPA 2: Iniciar multipart upload
+      console.log('\n[ParallelUpload] Etapa 2: Iniciando multipart upload...');
+      const INIT_START = Date.now();
 
-      const urlRequests = chunks.map((chunk, index) => {
-        const chunkFileName = `${fileName}.part${index}`;
-        // Usar o tipo MIME original do arquivo, não application/octet-stream
-        return window.r2API.generateUploadUrl(chunkFileName, file.type, chunk.size);
-      });
-
-      const urlResults = await Promise.all(urlRequests);
-      const URL_TIME = Date.now() - URL_START;
-
-      const failedUrls = urlResults.filter(r => !r.success);
-      if (failedUrls.length > 0) {
-        throw new Error(`Falha ao gerar ${failedUrls.length} presigned URLs`);
+      const initiateResult = await window.r2API.initiateMultipartUpload(fileName, file.type, file.size);
+      
+      if (!initiateResult.success) {
+        throw new Error(`Erro ao iniciar: ${initiateResult.error}`);
       }
 
-      const uploadUrls = urlResults.map(r => r.uploadUrl);
-      console.log(`[ParallelUpload] ${uploadUrls.length} URLs geradas em ${this.formatTime(URL_TIME)}`);
+      uploadId = initiateResult.uploadId;
+      console.log(`[ParallelUpload] Upload ID: ${uploadId}`);
+      console.log(`[ParallelUpload] Iniciado em ${this.formatTime(Date.now() - INIT_START)}`);
 
-      // ETAPA 3: Upload paralelo
+      // ETAPA 3: Upload paralelo dos chunks
       console.log('\n[ParallelUpload] Etapa 3: Upload paralelo dos chunks...');
-      const uploadResult = await this.uploadChunksInParallel(chunks, uploadUrls, onProgress);
+      const uploadResult = await this.uploadChunksInParallel(chunks, uploadId, onProgress);
 
-      // ETAPA 4: Verificar upload
-      console.log('\n[ParallelUpload] Etapa 4: Verificando uploads...');
-      const VERIFY_START = Date.now();
+      // ETAPA 4: Completar multipart upload
+      console.log('\n[ParallelUpload] Etapa 4: Completando multipart upload...');
+      const COMPLETE_START = Date.now();
 
-      const verifyResults = await Promise.all(
-        uploadUrls.map((_, index) => 
-          window.r2API.verifyUpload(`${fileName}.part${index}`)
-        )
-      );
-
-      const VERIFY_TIME = Date.now() - VERIFY_START;
-      const failedVerifications = verifyResults.filter((r, i) => !r.success || !r.exists);
-
-      if (failedVerifications.length > 0) {
-        throw new Error(`${failedVerifications.length} chunk(s) não verificado(s) no R2`);
+      const completeResult = await window.r2API.completeMultipartUpload(uploadId);
+      
+      if (!completeResult.success) {
+        throw new Error(`Erro ao completar: ${completeResult.error}`);
       }
 
-      console.log(`[ParallelUpload] Todos os chunks verificados em ${this.formatTime(VERIFY_TIME)}`);
+      console.log(`[ParallelUpload] Completado em ${this.formatTime(Date.now() - COMPLETE_START)}`);
 
-      // RESULTADO FINAL
       const TOTAL_TIME = Date.now() - TOTAL_START;
       const finalSpeed = file.size / (TOTAL_TIME / 1000);
 
       console.log('\n' + '━'.repeat(60));
       console.log('✅ UPLOAD CONCLUÍDO COM SUCESSO');
       console.log('━'.repeat(60));
-      console.log(`[ParallelUpload] Arquivo: ${fileName}`);
+      console.log(`[ParallelUpload] Arquivo: ${completeResult.fileName}`);
       console.log(`[ParallelUpload] Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`);
       console.log(`[ParallelUpload] Tempo total: ${this.formatTime(TOTAL_TIME)}`);
       console.log(`[ParallelUpload] Velocidade média: ${this.formatSpeed(finalSpeed)}`);
-      console.log(`[ParallelUpload] Chunks: ${chunks.length} em ${this.MAX_CONCURRENT} paralelos`);
+      console.log(`[ParallelUpload] Parts: ${uploadResult.totalChunks}`);
+      console.log(`[ParallelUpload] URL: ${completeResult.publicUrl}`);
       console.log('━'.repeat(60) + '\n');
 
       return {
         success: true,
         fileName: fileName,
-        chunks: chunks.length,
+        publicUrl: completeResult.publicUrl,
+        uploadId: uploadId,
+        chunks: uploadResult.totalChunks,
         totalTime: TOTAL_TIME,
-        avgSpeed: finalSpeed,
-        uploadUrls: uploadUrls
+        avgSpeed: finalSpeed
       };
 
     } catch (error) {
       const TOTAL_TIME = Date.now() - TOTAL_START;
       console.error('\n' + '━'.repeat(60));
-      console.error('❌ ERRO NO UPLOAD');
-      console.error('━'.repeat(60));
-      console.error(`[ParallelUpload] Tempo até erro: ${this.formatTime(TOTAL_TIME)}`);
-      console.error(`[ParallelUpload] Erro: ${error.message}`);
+      console.error('❌ ERRO: ' + error.message);
+      console.error(`Tempo até erro: ${this.formatTime(TOTAL_TIME)}`);
       console.error('━'.repeat(60) + '\n');
+
+      // Tentar abortar se upload foi iniciado
+      if (uploadId) {
+        try {
+          console.log('[ParallelUpload] Abortando upload...');
+          await window.r2API.abortMultipartUpload(uploadId);
+          console.log('[ParallelUpload] Upload abortado com sucesso');
+        } catch (abortError) {
+          console.error('[ParallelUpload] Erro ao abortar:', abortError.message);
+        }
+      }
 
       return {
         success: false,
         error: error.message,
+        uploadId: uploadId,
         timeUntilError: TOTAL_TIME
       };
     }
   }
 };
 
-// Tornar global
 window.ParallelUpload = ParallelUpload;
