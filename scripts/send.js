@@ -13,7 +13,7 @@ const Send = {
   },
 
   generatePostFolder(clientId, postId) {
-    return `client_${clientId}/post_${postId}`;
+    return `client ${clientId}/post ${postId}`;
   },
 
   async uploadToR2(file, fileName, onProgress = null) {
@@ -408,7 +408,7 @@ const Send = {
 
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
-        const fileName = `${postFolder}/file_${index + 1}.${fileExtension}`;
+        const fileName = `${postFolder}/file ${index + 1}.${fileExtension}`;
 
         return { 
           file: media.file, 
@@ -529,3 +529,4 @@ const Send = {
 };
 
 window.Send = Send;
+
