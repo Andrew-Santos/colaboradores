@@ -18,7 +18,7 @@ const Send = {
   generatePostFolder(clientId) {
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    return `criativa/${clientId}/post_${timestamp}_${randomId}`;
+    return `${clientId}/post_${timestamp}_${randomId}`;
   },
 
   async uploadToR2(file, fileName, onProgress = null) {
@@ -910,3 +910,4 @@ const Send = {
 
 // Tornar Send global
 window.Send = Send;
+
