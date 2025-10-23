@@ -18,7 +18,7 @@ const Send = {
   generatePostFolder(clientId) {
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    return `${clientId}/post_${timestamp}_${randomId}`;
+    return `${clientId}/post/${timestamp}_${randomId}`;
   },
 
   async uploadToR2(file, fileName, onProgress = null) {
@@ -696,7 +696,7 @@ const Send = {
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
         // NOVO FORMATO: criativa/{clientId}/post_XXX/arquivo_1.jpg
-        const fileName = `Client ${postFolder}/arquivo/${index + 1}.${fileExtension}`;
+        const fileName = `Client ${postFolder}/arquivo ${index + 1}.${fileExtension}`;
 
         return { 
           file: media.file, 
@@ -910,5 +910,6 @@ const Send = {
 
 // Tornar Send global
 window.Send = Send;
+
 
 
