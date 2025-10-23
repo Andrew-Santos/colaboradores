@@ -14,6 +14,13 @@ const Send = {
     return `${kbps.toFixed(2)} Kbps`;
   },
 
+  // NOVA FUNÇÃO: Gerar nome único para o post
+  generatePostFolder(clientId) {
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    return `criativa/${clientId}/post_${timestamp}_${randomId}`;
+  },
+
   async uploadToR2(file, fileName, onProgress = null) {
     const UPLOAD_START = Date.now();
     
@@ -681,12 +688,15 @@ const Send = {
       console.log(`[Send] 📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
       console.log('');
 
+      // MUDANÇA PRINCIPAL: Gerar pasta única do post
+      const postFolder = this.generatePostFolder(Renderer.selectedClient.id);
+      console.log(`[Send] 📁 Pasta do post: ${postFolder}`);
+      console.log('');
+
       const filesToUpload = Renderer.mediaFiles.map((media, index) => {
-        const timestamp = Date.now();
-        const randomId = Math.random().toString(36).substring(7);
         const fileExtension = media.file.name.split('.').pop().toLowerCase();
-        const tempPostId = `TEMP_${timestamp}_${randomId}`;
-        const fileName = `POST/${tempPostId}/${timestamp}_${randomId}_${index}.${fileExtension}`;
+        // NOVO FORMATO: criativa/{clientId}/post_XXX/arquivo_1.jpg
+        const fileName = `${postFolder}/arquivo_${index + 1}.${fileExtension}`;
 
         return { 
           file: media.file, 
@@ -817,6 +827,7 @@ const Send = {
       console.log('');
       console.log('📊 RESUMO GERAL:');
       console.log(`[Send] 🆔 Post ID: ${postId}`);
+      console.log(`[Send] 📁 Pasta: ${postFolder}`);
       console.log(`[Send] 📦 Mídias enviadas: ${uploadResults.length}`);
       console.log(`[Send] 📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
       console.log(`[Send] ⏱️ TEMPO TOTAL: ${this.formatTime(SCHEDULE_TIME)}`);
