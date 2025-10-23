@@ -368,7 +368,6 @@ app.post('/api/save-media', verifyToken, async (req, res) => {
       type: media.type,
       url_media: media.url,
       order: String(media.order),
-      url_render: media.url_render || null,
     }));
 
     console.log('[Media] Dados a inserir:', JSON.stringify(mediaData, null, 2));
@@ -525,4 +524,5 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Exportar para Vercel
 module.exports = app;
+
 
