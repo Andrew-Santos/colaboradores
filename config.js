@@ -251,6 +251,7 @@ window.r2API = {
     }
   },
 
+
   async moveFile(fileId, targetFolderId) {
     try {
       const token = localStorage.getItem('auth_token');

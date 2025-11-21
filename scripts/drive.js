@@ -95,9 +95,22 @@ const Drive = {
       });
     });
 
-    // Sort button
+    // Sort button - usar modal de ordenação
     document.getElementById('btn-sort')?.addEventListener('click', () => {
-      this.showSortMenu();
+      document.getElementById('modal-sort').classList.add('show');
+    });
+
+    document.getElementById('modal-close-sort')?.addEventListener('click', () => {
+      document.getElementById('modal-sort').classList.remove('show');
+    });
+
+    // Opções de ordenação
+    document.querySelectorAll('.sort-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        const field = e.currentTarget.dataset.field;
+        this.setSortBy(field);
+        document.getElementById('modal-sort').classList.remove('show');
+      });
     });
 
     // Selection actions
@@ -138,16 +151,19 @@ const Drive = {
 
     // Clicks em items
     document.addEventListener('click', (e) => {
-      const checkbox = e.target.closest('.item-checkbox');
+      const checkbox = e.target.closest('.item-checkbox, .file-list-checkbox');
       const folderItem = e.target.closest('.folder-item');
-      const fileItem = e.target.closest('.file-item, .file-list-item');
+      const fileItem = e.target.closest('.file-item');
+      const listItem = e.target.closest('.file-list-item');
       const deleteBtn = e.target.closest('.action-btn[data-action="delete"]');
       const downloadBtn = e.target.closest('.action-btn[data-action="download"]');
 
       if (checkbox) {
         e.stopPropagation();
         const item = checkbox.closest('.folder-item, .file-item, .file-list-item');
-        const type = item.classList.contains('folder-item') ? 'folder' : 'file';
+        const isFolder = item.classList.contains('folder-item') || 
+                        (item.classList.contains('file-list-item') && item.querySelector('.ph-folder'));
+        const type = isFolder ? 'folder' : 'file';
         const id = item.dataset.id;
         this.toggleSelection(type, id);
         return;
@@ -171,11 +187,25 @@ const Drive = {
       if (folderItem && !e.target.closest('.action-btn, .item-checkbox')) {
         const folderId = folderItem.dataset.id;
         this.navigateToFolder(folderId);
+        return;
       }
 
       if (fileItem && !e.target.closest('.action-btn, .item-checkbox')) {
         const fileId = fileItem.dataset.id;
         this.previewFile(fileId);
+        return;
+      }
+
+      if (listItem && !e.target.closest('.action-btn, .file-list-checkbox')) {
+        const isFolder = listItem.querySelector('.ph-folder');
+        if (isFolder) {
+          const folderId = listItem.dataset.id;
+          this.navigateToFolder(folderId);
+        } else {
+          const fileId = listItem.dataset.id;
+          this.previewFile(fileId);
+        }
+        return;
       }
     });
 
@@ -362,31 +392,19 @@ const Drive = {
         case 'date':
           comparison = new Date(a.created_at || 0) - new Date(b.created_at || 0);
           break;
+        case 'capture':
+          const dateA = a.data_de_captura ? new Date(a.data_de_captura) : new Date(0);
+          const dateB = b.data_de_captura ? new Date(b.data_de_captura) : new Date(0);
+          comparison = dateA - dateB;
+          break;
       }
       return this.sortOrder === 'asc' ? comparison : -comparison;
     });
 
+    // Ordenar pastas por nome sempre
+    this.folders.sort((a, b) => a.name.localeCompare(b.name));
+
     this.renderContents();
-  },
-
-  showSortMenu() {
-    const options = [
-      { label: 'Nome', value: 'name' },
-      { label: 'Tamanho', value: 'size' },
-      { label: 'Tipo', value: 'type' },
-      { label: 'Data', value: 'date' }
-    ];
-
-    const menu = options.map(opt => 
-      `<div onclick="Drive.setSortBy('${opt.value}')">${opt.label} ${this.sortBy === opt.value ? '✓' : ''}</div>`
-    ).join('');
-
-    // Implementar menu customizado ou usar confirm simples
-    const choice = prompt(`Ordenar por:\n1 - Nome\n2 - Tamanho\n3 - Tipo\n4 - Data\n\nEscolha (1-4):`);
-    const mapping = { '1': 'name', '2': 'size', '3': 'type', '4': 'date' };
-    if (mapping[choice]) {
-      this.setSortBy(mapping[choice]);
-    }
   },
 
   setSortBy(field) {
@@ -396,6 +414,21 @@ const Drive = {
       this.sortBy = field;
       this.sortOrder = 'asc';
     }
+    
+    // Atualizar UI do botão de ordenação
+    const sortBtn = document.getElementById('btn-sort');
+    if (sortBtn) {
+      const labels = {
+        name: 'Nome',
+        size: 'Tamanho',
+        type: 'Tipo',
+        date: 'Data Upload',
+        capture: 'Data Captura'
+      };
+      const icon = this.sortOrder === 'asc' ? '↑' : '↓';
+      sortBtn.innerHTML = `<i class="ph ph-sort-ascending"></i> <span>${labels[field]} ${icon}</span>`;
+    }
+    
     this.sortAndRenderContents();
   },
 
@@ -721,10 +754,15 @@ const Drive = {
       return;
     }
 
+    Notificacao.show(`Baixando ${fileItems.length} arquivo(s)...`, 'info');
+
     for (const item of fileItems) {
       const id = item.split('-')[1];
       await this.downloadFile(id);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Delay entre downloads
     }
+
+    Notificacao.show('Downloads concluídos!', 'success');
   },
 
   async downloadFile(fileId) {
@@ -732,19 +770,22 @@ const Drive = {
     if (!file) return;
 
     try {
-      const response = await fetch(file.url_media);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      // Extrair o nome do arquivo do path (último segmento)
+      const fileName = file.path ? file.path.split('/').pop() : file.name;
+      
+      // Usar a URL pública diretamente
       const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
+      a.href = file.url_media;
+      a.download = fileName; // Nome original do R2
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
+      console.log('[Drive] Download iniciado:', fileName);
     } catch (error) {
       console.error('[Drive] Erro ao baixar arquivo:', error);
-      Notificacao.show('Erro ao baixar arquivo', 'error');
+      Notificacao.show('Erro ao baixar: ' + file.name, 'error');
     }
   },
 

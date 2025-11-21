@@ -876,6 +876,42 @@
   background: #fafafa;
 }
 
+.sort-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sort-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--primary);
+  text-align: left;
+}
+
+.sort-option:active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.sort-option i {
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.sort-option span {
+  flex: 1;
+}
+
 .btn {
   padding: 10px 20px;
   border: none;
