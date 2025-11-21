@@ -401,7 +401,7 @@ app.post('/api/save-media', verifyToken, async (req, res) => {
   }
 });
 
-// ============ NOVO: DELETAR POST (PARA ROLLBACK) ============
+// DELETAR POST (PARA ROLLBACK)
 app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
   try {
     const { postId } = req.params;
@@ -441,12 +441,12 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
       });
     }
     
-    // 2. Verificar permissão (opcional - pode remover se quiser permitir qualquer admin deletar)
+    // 2. Verificar permissão (opcional)
     if (post.created_by !== userId) {
       console.log('[Delete] Usuário diferente, mas permitindo rollback');
     }
     
-    // 3. Deletar mídias associadas primeiro (para manter integridade)
+    // 3. Deletar mídias associadas primeiro
     console.log('[Delete] Deletando mídias do post...');
     const { error: deleteMediaError } = await supabase
       .from('post_media')
@@ -455,7 +455,6 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
     
     if (deleteMediaError) {
       console.error('[Delete] Erro ao deletar mídias:', deleteMediaError);
-      // Continuar mesmo assim, pois o importante é deletar o post
     } else {
       console.log('[Delete] Mídias deletadas com sucesso');
     }
@@ -489,6 +488,370 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
   }
 });
 
+// ============ ROTAS DO DRIVE ============
+
+// LISTAR CONTEÚDO DE PASTA
+app.get('/api/drive/contents', verifyToken, async (req, res) => {
+  try {
+    console.log('[Drive] Requisição de conteúdo recebida');
+    
+    const { clientId, folderId } = req.query;
+
+    if (!clientId) {
+      console.error('[Drive] clientId não fornecido');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Cliente não informado' 
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar pastas
+    console.log('[Drive] Buscando pastas...');
+    let foldersQuery = supabase
+      .from('drive_folders')
+      .select('*')
+      .eq('id_client', clientId)
+      .order('name', { ascending: true });
+
+    if (folderId) {
+      foldersQuery = foldersQuery.eq('id_parent', folderId);
+    } else {
+      foldersQuery = foldersQuery.is('id_parent', null);
+    }
+
+    const { data: folders, error: foldersError } = await foldersQuery;
+    
+    if (foldersError) {
+      console.error('[Drive] Erro ao buscar pastas:', foldersError);
+      throw foldersError;
+    }
+
+    // Buscar arquivos
+    console.log('[Drive] Buscando arquivos...');
+    let filesQuery = supabase
+      .from('drive_files')
+      .select('*')
+      .eq('id_client', clientId)
+      .order('created_at', { ascending: false });
+
+    if (folderId) {
+      filesQuery = filesQuery.eq('id_folders', folderId);
+    } else {
+      filesQuery = filesQuery.is('id_folders', null);
+    }
+
+    const { data: files, error: filesError } = await filesQuery;
+    
+    if (filesError) {
+      console.error('[Drive] Erro ao buscar arquivos:', filesError);
+      throw filesError;
+    }
+
+    console.log(`[Drive] Cliente ${clientId}: ${folders?.length || 0} pastas, ${files?.length || 0} arquivos`);
+
+    res.json({
+      success: true,
+      folders: folders || [],
+      files: files || []
+    });
+
+  } catch (error) {
+    console.error('[Drive] Erro fatal:', error);
+    console.error('[Drive] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao listar conteúdo' 
+    });
+  }
+});
+
+// CRIAR PASTA
+app.post('/api/drive/folder', verifyToken, async (req, res) => {
+  try {
+    console.log('[Drive] Criando nova pasta');
+    console.log('[Drive] Body:', JSON.stringify(req.body, null, 2));
+    
+    const { name, clientId, parentId } = req.body;
+
+    if (!name || !clientId) {
+      console.error('[Drive] Dados obrigatórios faltando');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Nome e cliente são obrigatórios' 
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Gerar path único
+    let path = `client-${clientId}`;
+    
+    if (parentId) {
+      console.log('[Drive] Buscando pasta pai:', parentId);
+      const { data: parent, error: parentError } = await supabase
+        .from('drive_folders')
+        .select('path')
+        .eq('id', parentId)
+        .single();
+      
+      if (parentError) {
+        console.error('[Drive] Erro ao buscar pasta pai:', parentError);
+      }
+      
+      if (parent) {
+        path = parent.path;
+      }
+    }
+    
+    path += `/${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+    console.log('[Drive] Path gerado:', path);
+
+    const folderData = {
+      name,
+      id_client: clientId,
+      id_parent: parentId || null,
+      path
+    };
+
+    console.log('[Drive] Inserindo pasta:', JSON.stringify(folderData, null, 2));
+
+    const { data, error } = await supabase
+      .from('drive_folders')
+      .insert([folderData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Drive] Erro ao criar pasta:', error);
+      throw error;
+    }
+
+    console.log(`[Drive] Pasta criada com sucesso: ${name} (ID: ${data.id})`);
+
+    res.json({ 
+      success: true, 
+      folder: data 
+    });
+
+  } catch (error) {
+    console.error('[Drive] Erro fatal:', error);
+    console.error('[Drive] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao criar pasta' 
+    });
+  }
+});
+
+// DELETAR PASTA (CASCADE deleta subpastas e arquivos)
+app.delete('/api/drive/folder/:folderId', verifyToken, async (req, res) => {
+  try {
+    const { folderId } = req.params;
+    
+    console.log(`[Drive] Deletando pasta ${folderId}`);
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar todos os arquivos da pasta para possível limpeza no R2
+    const { data: files, error: filesError } = await supabase
+      .from('drive_files')
+      .select('path')
+      .eq('id_folders', folderId);
+
+    if (filesError) {
+      console.error('[Drive] Erro ao buscar arquivos da pasta:', filesError);
+    } else {
+      console.log(`[Drive] Encontrados ${files?.length || 0} arquivos na pasta`);
+    }
+
+    // Deletar pasta (CASCADE vai deletar arquivos do banco)
+    const { error } = await supabase
+      .from('drive_folders')
+      .delete()
+      .eq('id', folderId);
+
+    if (error) {
+      console.error('[Drive] Erro ao deletar pasta:', error);
+      throw error;
+    }
+
+    // TODO: Deletar arquivos do R2 se necessário
+    // if (files && files.length > 0) {
+    //   const filePaths = files.map(f => f.path);
+    //   console.log('[Drive] Arquivos para deletar do R2:', filePaths);
+    //   // await r2API.deleteFiles(filePaths);
+    // }
+
+    console.log(`[Drive] ✓ Pasta ${folderId} deletada com sucesso`);
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('[Drive] Erro fatal:', error);
+    console.error('[Drive] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao deletar pasta' 
+    });
+  }
+});
+
+// SALVAR ARQUIVO
+app.post('/api/drive/file', verifyToken, async (req, res) => {
+  try {
+    console.log('[Drive] Salvando arquivo');
+    console.log('[Drive] Body:', JSON.stringify(req.body, null, 2));
+    
+    const { 
+      clientId, 
+      folderId, 
+      path, 
+      name, 
+      urlMedia, 
+      urlThumbnail, 
+      dimensions, 
+      duration, 
+      fileType, 
+      mimeType, 
+      fileSizeKb, 
+      dataDeCaptura 
+    } = req.body;
+
+    if (!clientId || !path || !name || !urlMedia) {
+      console.error('[Drive] Dados obrigatórios faltando');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Dados incompletos' 
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    const fileData = {
+      id_client: clientId,
+      id_folders: folderId || null,
+      path,
+      name,
+      url_media: urlMedia,
+      url_thumbnail: urlThumbnail || null,
+      dimensions: dimensions || null,
+      duration: duration || null,
+      file_type: fileType,
+      mime_type: mimeType,
+      file_size_kb: fileSizeKb,
+      data_de_captura: dataDeCaptura || null
+    };
+
+    console.log('[Drive] Inserindo arquivo:', JSON.stringify(fileData, null, 2));
+
+    const { data, error } = await supabase
+      .from('drive_files')
+      .insert([fileData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Drive] Erro ao salvar arquivo:', error);
+      throw error;
+    }
+
+    console.log(`[Drive] ✓ Arquivo salvo: ${name} (ID: ${data.id})`);
+
+    res.json({ 
+      success: true, 
+      file: data 
+    });
+
+  } catch (error) {
+    console.error('[Drive] Erro fatal:', error);
+    console.error('[Drive] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao salvar arquivo' 
+    });
+  }
+});
+
+// DELETAR ARQUIVO
+app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    
+    console.log(`[Drive] Deletando arquivo ${fileId}`);
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar path para deletar do R2
+    const { data: file, error: fetchError } = await supabase
+      .from('drive_files')
+      .select('path, name')
+      .eq('id', fileId)
+      .single();
+
+    if (fetchError) {
+      console.error('[Drive] Erro ao buscar arquivo:', fetchError);
+    } else {
+      console.log(`[Drive] Arquivo encontrado: ${file?.name}`);
+    }
+
+    // Deletar do banco
+    const { error } = await supabase
+      .from('drive_files')
+      .delete()
+      .eq('id', fileId);
+
+    if (error) {
+      console.error('[Drive] Erro ao deletar arquivo:', error);
+      throw error;
+    }
+
+    // TODO: Deletar do R2 se necessário
+    // if (file && file.path) {
+    //   console.log('[Drive] Deletando do R2:', file.path);
+    //   // await r2API.deleteFile(file.path);
+    // }
+
+    console.log(`[Drive] ✓ Arquivo ${fileId} deletado com sucesso`);
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('[Drive] Erro fatal:', error);
+    console.error('[Drive] Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao deletar arquivo' 
+    });
+  }
+});
+
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
   res.json({ 
@@ -515,7 +878,7 @@ if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log('\n================================');
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📂 Servindo arquivos estáticos`);
     console.log(`🔗 Acesse: http://localhost:${PORT}`);
     console.log('================================\n');
@@ -524,5 +887,3 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Exportar para Vercel
 module.exports = app;
-
-
