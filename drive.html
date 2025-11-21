@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Drive Criativa</title>
     <link rel="stylesheet" href="./styles/main.css">
     <link rel="stylesheet" href="./styles/drive.css">
@@ -36,13 +36,14 @@
   <div id="drive-system">
     <div class="system-header">
       <img id="logo">
-      <h1><i class="ph ph-cloud"></i> Drive Criativa</h1>
+      <h1><i class="ph ph-cloud"></i> Drive</h1>
       <div class="header-actions">
         <a href="./index.html" class="btn-nav">
-          <i class="ph ph-calendar-plus"></i> Agendamento
+          <i class="ph ph-calendar-plus"></i>
+          <span class="btn-text">Agendamento</span>
         </a>
         <button class="btn-logout" id="btn-logout">
-          <i class="ph ph-sign-out"></i> Sair
+          <i class="ph ph-sign-out"></i>
         </button>
       </div>
     </div>
@@ -65,7 +66,7 @@
           <span class="breadcrumb-item active">Selecione um cliente</span>
         </div>
 
-       <!-- Toolbar -->
+        <!-- Toolbar -->
         <div class="drive-toolbar" id="drive-toolbar" style="display: none;">
           <button class="toolbar-btn" id="btn-new-folder">
             <i class="ph ph-folder-plus"></i>
@@ -78,13 +79,13 @@
           <input type="file" id="file-input" multiple accept="image/*,video/*" style="display: none;">
           
           <div class="view-controls">
-            <button class="view-btn active" data-view="compact">
+            <button class="view-btn active" data-view="compact" title="Compacto">
               <i class="ph ph-squares-four"></i>
             </button>
-            <button class="view-btn" data-view="grid">
+            <button class="view-btn" data-view="grid" title="Grade">
               <i class="ph ph-grid-four"></i>
             </button>
-            <button class="view-btn" data-view="list">
+            <button class="view-btn" data-view="list" title="Lista">
               <i class="ph ph-list"></i>
             </button>
           </div>
@@ -92,25 +93,24 @@
 
         <!-- Barra de Seleção -->
         <div class="selection-bar" id="selection-bar">
-          <span class="selection-count" id="selection-count">0 itens selecionados</span>
+          <span class="selection-count" id="selection-count">0 itens</span>
           <div class="selection-actions">
             <button class="selection-btn" id="btn-download-selected">
               <i class="ph ph-download-simple"></i>
-              Baixar
+              <span>Baixar</span>
             </button>
             <button class="selection-btn danger" id="btn-delete-selected">
               <i class="ph ph-trash"></i>
-              Excluir
+              <span>Excluir</span>
             </button>
             <button class="selection-btn" id="btn-deselect">
               <i class="ph ph-x"></i>
-              Cancelar
             </button>
           </div>
         </div>
 
         <!-- Conteúdo do Drive -->
-        <div class="drive-content" id="drive-content">
+        <div class="drive-content view-compact" id="drive-content">
           <div class="empty-state">
             <i class="ph ph-folder-open"></i>
             <p>Selecione um cliente para ver os arquivos</p>
@@ -131,7 +131,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="folder-name">Nome da pasta:</label>
+          <label for="folder-name">Nome da pasta</label>
           <input type="text" id="folder-name" class="form-control" placeholder="Ex: Fotos Dezembro">
         </div>
       </div>

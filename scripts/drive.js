@@ -6,10 +6,12 @@ const Drive = {
   files: [],
   breadcrumbPath: [],
   selectedItems: new Set(),
-  viewMode: 'compact', // 'compact', 'grid', 'list'
-  sortBy: 'name', // 'name', 'size', 'type', 'date'
+  viewMode: 'compact',
+  sortBy: 'name',
   sortOrder: 'asc',
-  draggedItems: new Set(),
+  lastSelectedItem: null,
+  lastTapTime: 0,
+  lastTapItem: null,
 
   async init() {
     VANTA.WAVES({
@@ -95,29 +97,15 @@ const Drive = {
       });
     });
 
-    // Sort button - usar modal de ordenação
-    document.getElementById('btn-sort')?.addEventListener('click', () => {
-      document.getElementById('modal-sort').classList.add('show');
-    });
-
-    document.getElementById('modal-close-sort')?.addEventListener('click', () => {
-      document.getElementById('modal-sort').classList.remove('show');
-    });
-
-    // Opções de ordenação
-    document.querySelectorAll('.sort-option').forEach(opt => {
-      opt.addEventListener('click', (e) => {
-        const field = e.currentTarget.dataset.field;
-        this.setSortBy(field);
-        document.getElementById('modal-sort').classList.remove('show');
-      });
-    });
-
     // Selection actions
-    document.getElementById('btn-select-all')?.addEventListener('click', () => this.selectAll());
-    document.getElementById('btn-deselect')?.addEventListener('click', () => this.clearSelection());
-    document.getElementById('btn-delete-selected')?.addEventListener('click', () => this.deleteSelected());
-    document.getElementById('btn-download-selected')?.addEventListener('click', () => this.downloadSelected());
+    const deselectBtn = document.getElementById('btn-deselect');
+    if (deselectBtn) deselectBtn.addEventListener('click', () => this.clearSelection());
+    
+    const deleteBtn = document.getElementById('btn-delete-selected');
+    if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteSelected());
+    
+    const downloadBtn = document.getElementById('btn-download-selected');
+    if (downloadBtn) downloadBtn.addEventListener('click', () => this.downloadSelected());
 
     // Preview modal
     document.getElementById('modal-close-preview').addEventListener('click', () => {
@@ -125,12 +113,13 @@ const Drive = {
       document.getElementById('preview-container').innerHTML = '';
     });
 
-    // Fechar modal com ESC
+    // Fechar modal com ESC e limpar seleção
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         document.getElementById('modal-new-folder').classList.remove('show');
         document.getElementById('modal-preview').classList.remove('show');
         document.getElementById('preview-container').innerHTML = '';
+        this.clearSelection();
       }
     });
 
@@ -138,7 +127,9 @@ const Drive = {
     const driveContent = document.getElementById('drive-content');
     driveContent.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (this.selectedClient) driveContent.classList.add('dragover');
+      if (this.selectedClient && e.dataTransfer.types.includes('Files')) {
+        driveContent.classList.add('dragover');
+      }
     });
     driveContent.addEventListener('dragleave', () => driveContent.classList.remove('dragover'));
     driveContent.addEventListener('drop', (e) => {
@@ -149,130 +140,231 @@ const Drive = {
       }
     });
 
-    // Clicks em items
-    document.addEventListener('click', (e) => {
-      const checkbox = e.target.closest('.item-checkbox, .file-list-checkbox');
-      const folderItem = e.target.closest('.folder-item');
-      const fileItem = e.target.closest('.file-item');
-      const listItem = e.target.closest('.file-list-item');
-      const deleteBtn = e.target.closest('.action-btn[data-action="delete"]');
-      const downloadBtn = e.target.closest('.action-btn[data-action="download"]');
-
-      if (checkbox) {
-        e.stopPropagation();
-        const item = checkbox.closest('.folder-item, .file-item, .file-list-item');
-        const isFolder = item.classList.contains('folder-item') || 
-                        (item.classList.contains('file-list-item') && item.querySelector('.ph-folder'));
-        const type = isFolder ? 'folder' : 'file';
-        const id = item.dataset.id;
-        this.toggleSelection(type, id);
-        return;
-      }
-
-      if (deleteBtn) {
-        e.stopPropagation();
-        const type = deleteBtn.dataset.type;
-        const id = deleteBtn.dataset.id;
-        this.confirmDelete(type, id);
-        return;
-      }
-
-      if (downloadBtn) {
-        e.stopPropagation();
-        const id = downloadBtn.dataset.id;
-        this.downloadFile(id);
-        return;
-      }
-
-      if (folderItem && !e.target.closest('.action-btn, .item-checkbox')) {
-        const folderId = folderItem.dataset.id;
-        this.navigateToFolder(folderId);
-        return;
-      }
-
-      if (fileItem && !e.target.closest('.action-btn, .item-checkbox')) {
-        const fileId = fileItem.dataset.id;
-        this.previewFile(fileId);
-        return;
-      }
-
-      if (listItem && !e.target.closest('.action-btn, .file-list-checkbox')) {
-        const isFolder = listItem.querySelector('.ph-folder');
-        if (isFolder) {
-          const folderId = listItem.dataset.id;
-          this.navigateToFolder(folderId);
-        } else {
-          const fileId = listItem.dataset.id;
-          this.previewFile(fileId);
-        }
-        return;
-      }
-    });
-
-    // Drag items para mover
-    document.addEventListener('dragstart', (e) => {
-      const item = e.target.closest('.folder-item, .file-item');
-      if (item) {
-        const type = item.classList.contains('folder-item') ? 'folder' : 'file';
-        const id = item.dataset.id;
-        
-        // Se o item não está selecionado, seleciona apenas ele
-        if (!this.selectedItems.has(`${type}-${id}`)) {
+    // Clique fora dos itens para limpar seleção
+    driveContent.addEventListener('click', (e) => {
+      if (e.target === driveContent || e.target.closest('.empty-state') || 
+          e.target.closest('.section-title')) {
+        if (!e.ctrlKey && !e.metaKey) {
           this.clearSelection();
-          this.toggleSelection(type, id);
         }
-        
-        // Adiciona classe dragging em todos os itens selecionados
-        this.draggedItems = new Set(this.selectedItems);
-        this.updateDraggingState();
-        
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', Array.from(this.draggedItems).join(','));
       }
     });
 
-    document.addEventListener('dragend', () => {
-      this.draggedItems.clear();
-      this.updateDraggingState();
-      document.querySelectorAll('.folder-item').forEach(f => f.classList.remove('drop-target'));
+    // Event delegation para cliques nos itens
+    document.addEventListener('click', (e) => this.handleItemClick(e));
+    document.addEventListener('dblclick', (e) => this.handleItemDoubleClick(e));
+
+    // Touch events para mobile (double tap)
+    document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+
+    // Long press para mobile
+    this.setupLongPress();
+  },
+
+  setupLongPress() {
+    let longPressTimer = null;
+    let longPressTriggered = false;
+
+    document.addEventListener('touchstart', (e) => {
+      const item = e.target.closest('.folder-item, .file-item, .file-list-item');
+      if (item) {
+        longPressTriggered = false;
+        longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          this.handleLongPress(item);
+        }, 500);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      clearTimeout(longPressTimer);
     });
 
-    // Drop em pastas
-    document.addEventListener('dragover', (e) => {
-      const folder = e.target.closest('.folder-item');
-      if (folder && this.draggedItems.size > 0) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        folder.classList.add('drop-target');
-      }
+    document.addEventListener('touchmove', () => {
+      clearTimeout(longPressTimer);
+    }, { passive: true });
+  },
+
+  handleLongPress(item) {
+    const type = this.getItemType(item);
+    const id = item.dataset.id;
+    const key = `${type}-${id}`;
+
+    if (navigator.vibrate) navigator.vibrate(50);
+
+    if (!this.selectedItems.has(key)) {
+      this.selectedItems.add(key);
+      this.lastSelectedItem = key;
+      this.updateSelectionUI();
+    }
+
+    this.showActionsModal(type, id);
+  },
+
+  showActionsModal(type, id) {
+    const existingModal = document.getElementById('actions-modal');
+    if (existingModal) existingModal.remove();
+
+    const item = type === 'folder' 
+      ? this.folders.find(f => String(f.id) === String(id))
+      : this.files.find(f => String(f.id) === String(id));
+
+    if (!item) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'actions-modal';
+    modal.className = 'actions-modal-overlay';
+    modal.innerHTML = `
+      <div class="actions-modal">
+        <div class="actions-modal-header">
+          <span class="actions-modal-title">${item.name}</span>
+          <button class="actions-modal-close"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="actions-modal-body">
+          ${type === 'file' ? `
+            <button class="actions-modal-btn" data-action="open">
+              <i class="ph ph-eye"></i> Abrir
+            </button>
+            <button class="actions-modal-btn" data-action="download">
+              <i class="ph ph-download-simple"></i> Baixar
+            </button>
+          ` : `
+            <button class="actions-modal-btn" data-action="open">
+              <i class="ph ph-folder-open"></i> Abrir pasta
+            </button>
+          `}
+          <button class="actions-modal-btn danger" data-action="delete">
+            <i class="ph ph-trash"></i> Excluir
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    setTimeout(() => modal.classList.add('show'), 10);
+
+    const closeModal = () => {
+      modal.classList.remove('show');
+      setTimeout(() => modal.remove(), 200);
+    };
+
+    modal.querySelector('.actions-modal-close').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
     });
 
-    document.addEventListener('dragleave', (e) => {
-      const folder = e.target.closest('.folder-item');
-      if (folder) {
-        folder.classList.remove('drop-target');
-      }
-    });
+    modal.querySelectorAll('.actions-modal-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        closeModal();
 
-    document.addEventListener('drop', async (e) => {
-      const folder = e.target.closest('.folder-item');
-      if (folder && this.draggedItems.size > 0) {
-        e.preventDefault();
-        folder.classList.remove('drop-target');
-        const targetFolderId = folder.dataset.id;
-        await this.moveItemsToFolder(targetFolderId);
-      }
+        setTimeout(() => {
+          if (action === 'open') {
+            if (type === 'folder') this.navigateToFolder(id);
+            else this.previewFile(id);
+          } else if (action === 'download') {
+            this.downloadFile(id);
+          } else if (action === 'delete') {
+            this.confirmDelete(type, id);
+          }
+        }, 200);
+      });
     });
+  },
+
+  handleTouchEnd(e) {
+    const item = e.target.closest('.folder-item, .file-item, .file-list-item');
+    if (!item) return;
+
+    const now = Date.now();
+    const id = item.dataset.id;
+
+    if (this.lastTapItem === id && (now - this.lastTapTime) < 300) {
+      e.preventDefault();
+      this.handleItemDoubleClick(e, item);
+      this.lastTapTime = 0;
+      this.lastTapItem = null;
+    } else {
+      this.lastTapTime = now;
+      this.lastTapItem = id;
+    }
+  },
+
+  getItemType(element) {
+    if (element.classList.contains('folder-item')) return 'folder';
+    if (element.classList.contains('file-item')) return 'file';
+    if (element.classList.contains('file-list-item')) {
+      return element.querySelector('.ph-folder') ? 'folder' : 'file';
+    }
+    return null;
+  },
+
+  handleItemClick(e) {
+    const item = e.target.closest('.folder-item, .file-item, .file-list-item');
+    if (!item) return;
+
+    const type = this.getItemType(item);
+    const id = item.dataset.id;
+    const key = `${type}-${id}`;
+
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      if (this.selectedItems.has(key)) {
+        this.selectedItems.delete(key);
+      } else {
+        this.selectedItems.add(key);
+      }
+      this.lastSelectedItem = key;
+    } else if (e.shiftKey && this.lastSelectedItem) {
+      e.preventDefault();
+      this.selectRange(this.lastSelectedItem, key);
+    } else {
+      this.selectedItems.clear();
+      this.selectedItems.add(key);
+      this.lastSelectedItem = key;
+    }
+
+    this.updateSelectionUI();
+  },
+
+  handleItemDoubleClick(e, touchItem = null) {
+    const item = touchItem || e.target.closest('.folder-item, .file-item, .file-list-item');
+    if (!item) return;
+
+    const type = this.getItemType(item);
+    const id = item.dataset.id;
+
+    if (type === 'folder') {
+      this.navigateToFolder(id);
+    } else {
+      this.previewFile(id);
+    }
+  },
+
+  selectRange(startKey, endKey) {
+    const allItems = [
+      ...this.folders.map(f => `folder-${f.id}`),
+      ...this.files.map(f => `file-${f.id}`)
+    ];
+
+    const startIndex = allItems.indexOf(startKey);
+    const endIndex = allItems.indexOf(endKey);
+
+    if (startIndex === -1 || endIndex === -1) return;
+
+    const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+    for (let i = from; i <= to; i++) {
+      this.selectedItems.add(allItems[i]);
+    }
   },
 
   async loadClients() {
     try {
-      console.log('[Drive] Carregando clientes...');
       const result = await window.supabaseAPI.getClients();
       if (!result.success) throw new Error(result.error);
       this.clients = result.data || [];
       this.renderClientList();
-      console.log('[Drive] Clientes carregados:', this.clients.length);
     } catch (error) {
       console.error('[Drive] Erro ao carregar clientes:', error);
       Notificacao.show('Erro ao carregar clientes', 'error');
@@ -300,8 +392,6 @@ const Drive = {
   },
 
   async selectClient(clientId) {
-    console.log('[Drive] Selecionando cliente:', clientId);
-    
     document.querySelectorAll('.client-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`.client-item[data-id="${clientId}"]`)?.classList.add('active');
 
@@ -316,7 +406,6 @@ const Drive = {
 
   async loadFolderContents() {
     try {
-      console.log('[Drive] Carregando conteúdo da pasta...');
       const content = document.getElementById('drive-content');
       content.innerHTML = '<div class="empty-state"><i class="ph ph-spinner"></i><p>Carregando...</p></div>';
 
@@ -326,8 +415,6 @@ const Drive = {
 
       this.folders = result.folders || [];
       this.files = result.files || [];
-      
-      console.log(`[Drive] Carregado: ${this.folders.length} pastas, ${this.files.length} arquivos`);
       
       this.clearSelection();
       this.renderBreadcrumb();
@@ -376,60 +463,19 @@ const Drive = {
   },
 
   sortAndRenderContents() {
-    // Ordenar arquivos
     this.files.sort((a, b) => {
       let comparison = 0;
       switch (this.sortBy) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'size':
-          comparison = (a.file_size_kb || 0) - (b.file_size_kb || 0);
-          break;
-        case 'type':
-          comparison = (a.file_type || '').localeCompare(b.file_type || '');
-          break;
-        case 'date':
-          comparison = new Date(a.created_at || 0) - new Date(b.created_at || 0);
-          break;
-        case 'capture':
-          const dateA = a.data_de_captura ? new Date(a.data_de_captura) : new Date(0);
-          const dateB = b.data_de_captura ? new Date(b.data_de_captura) : new Date(0);
-          comparison = dateA - dateB;
-          break;
+        case 'name': comparison = a.name.localeCompare(b.name); break;
+        case 'size': comparison = (a.file_size_kb || 0) - (b.file_size_kb || 0); break;
+        case 'type': comparison = (a.file_type || '').localeCompare(b.file_type || ''); break;
+        case 'date': comparison = new Date(a.created_at || 0) - new Date(b.created_at || 0); break;
       }
       return this.sortOrder === 'asc' ? comparison : -comparison;
     });
 
-    // Ordenar pastas por nome sempre
     this.folders.sort((a, b) => a.name.localeCompare(b.name));
-
     this.renderContents();
-  },
-
-  setSortBy(field) {
-    if (this.sortBy === field) {
-      this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
-    } else {
-      this.sortBy = field;
-      this.sortOrder = 'asc';
-    }
-    
-    // Atualizar UI do botão de ordenação
-    const sortBtn = document.getElementById('btn-sort');
-    if (sortBtn) {
-      const labels = {
-        name: 'Nome',
-        size: 'Tamanho',
-        type: 'Tipo',
-        date: 'Data Upload',
-        capture: 'Data Captura'
-      };
-      const icon = this.sortOrder === 'asc' ? '↑' : '↓';
-      sortBtn.innerHTML = `<i class="ph ph-sort-ascending"></i> <span>${labels[field]} ${icon}</span>`;
-    }
-    
-    this.sortAndRenderContents();
   },
 
   renderContents() {
@@ -439,7 +485,8 @@ const Drive = {
       content.innerHTML = `
         <div class="empty-state">
           <i class="ph ph-folder-open"></i>
-          <p>Pasta vazia - arraste arquivos aqui</p>
+          <p>Pasta vazia</p>
+          <span class="empty-hint">Arraste arquivos ou use o botão Upload</span>
         </div>
       `;
       return;
@@ -459,7 +506,7 @@ const Drive = {
     if (this.folders.length > 0) {
       html += `
         <div class="folders-section">
-          <div class="section-title">Pastas (${this.folders.length})</div>
+          <div class="section-title"><i class="ph ph-folder"></i> Pastas (${this.folders.length})</div>
           <div class="folders-grid">
             ${this.folders.map(f => this.renderFolderItem(f)).join('')}
           </div>
@@ -470,7 +517,7 @@ const Drive = {
     if (this.files.length > 0) {
       html += `
         <div class="files-section">
-          <div class="section-title">Arquivos (${this.files.length})</div>
+          <div class="section-title"><i class="ph ph-image"></i> Arquivos (${this.files.length})</div>
           <div class="files-grid">
             ${this.files.map(f => this.renderFileItem(f)).join('')}
           </div>
@@ -483,45 +530,25 @@ const Drive = {
 
   renderListView() {
     const content = document.getElementById('drive-content');
-    let html = '';
+    let html = '<div class="files-list">';
 
     if (this.folders.length > 0) {
-      html += `
-        <div class="folders-section">
-          <div class="section-title">Pastas (${this.folders.length})</div>
-          <div class="files-list">
-            ${this.folders.map(f => this.renderFolderListItem(f)).join('')}
-          </div>
-        </div>
-      `;
+      html += this.folders.map(f => this.renderFolderListItem(f)).join('');
     }
 
     if (this.files.length > 0) {
-      html += `
-        <div class="files-section">
-          <div class="section-title">Arquivos (${this.files.length})</div>
-          <div class="files-list">
-            ${this.files.map(f => this.renderFileListItem(f)).join('')}
-          </div>
-        </div>
-      `;
+      html += this.files.map(f => this.renderFileListItem(f)).join('');
     }
 
+    html += '</div>';
     content.innerHTML = html;
   },
 
   renderFolderItem(folder) {
     const isSelected = this.selectedItems.has(`folder-${folder.id}`);
     return `
-      <div class="folder-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}" draggable="true">
-        <div class="item-checkbox ${isSelected ? 'checked' : ''}">
-          <i class="ph-fill ph-check"></i>
-        </div>
-        <div class="item-actions">
-          <button class="action-btn" data-action="delete" data-type="folder" data-id="${folder.id}">
-            <i class="ph ph-trash"></i>
-          </button>
-        </div>
+      <div class="folder-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
+        <div class="item-select-indicator"></div>
         <i class="ph-fill ph-folder"></i>
         <div class="folder-name" title="${folder.name}">${folder.name}</div>
       </div>
@@ -531,31 +558,15 @@ const Drive = {
   renderFileItem(file) {
     const isSelected = this.selectedItems.has(`file-${file.id}`);
     return `
-      <div class="file-item ${isSelected ? 'selected' : ''}" data-id="${file.id}" draggable="true">
-        <div class="item-checkbox ${isSelected ? 'checked' : ''}">
-          <i class="ph-fill ph-check"></i>
-        </div>
-        <div class="item-actions">
-          <button class="action-btn" data-action="download" data-type="file" data-id="${file.id}">
-            <i class="ph ph-download-simple"></i>
-          </button>
-          <button class="action-btn" data-action="delete" data-type="file" data-id="${file.id}">
-            <i class="ph ph-trash"></i>
-          </button>
-        </div>
+      <div class="file-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
+        <div class="item-select-indicator"></div>
         <div class="file-thumbnail">
           ${file.file_type === 'video' 
             ? `<video src="${file.url_media}" preload="metadata"></video>`
-            : `<img src="${file.url_media}" alt="${file.name}">`
+            : `<img src="${file.url_media}" alt="${file.name}" loading="lazy">`
           }
-          <span class="file-type-badge">${file.file_type === 'video' ? 'VÍD' : 'IMG'}</span>
+          ${file.file_type === 'video' ? '<span class="file-type-badge"><i class="ph-fill ph-play"></i></span>' : ''}
         </div>
-        ${this.viewMode === 'grid' ? `
-          <div class="file-info-overlay">
-            <div class="file-name" title="${file.name}">${this.truncateName(file.name, 20)}</div>
-            <div class="file-meta">${this.formatFileSize(file.file_size_kb)}</div>
-          </div>
-        ` : ''}
       </div>
     `;
   },
@@ -563,23 +574,14 @@ const Drive = {
   renderFolderListItem(folder) {
     const isSelected = this.selectedItems.has(`folder-${folder.id}`);
     return `
-      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}" draggable="true">
-        <div class="file-list-checkbox ${isSelected ? 'checked' : ''}">
-          <i class="ph-fill ph-check"></i>
-        </div>
-        <div style="font-size: 32px; color: #fbbf24; width: 48px; text-align: center;">
+      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
+        <div class="item-select-indicator"></div>
+        <div class="list-item-icon folder">
           <i class="ph-fill ph-folder"></i>
         </div>
         <div class="file-list-info">
           <div class="file-list-name">${folder.name}</div>
-          <div class="file-list-meta">
-            <span>Pasta</span>
-          </div>
-        </div>
-        <div class="file-list-actions">
-          <button class="action-btn" data-action="delete" data-type="folder" data-id="${folder.id}">
-            <i class="ph ph-trash"></i>
-          </button>
+          <div class="file-list-meta">Pasta</div>
         </div>
       </div>
     `;
@@ -588,116 +590,45 @@ const Drive = {
   renderFileListItem(file) {
     const isSelected = this.selectedItems.has(`file-${file.id}`);
     return `
-      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${file.id}" draggable="true">
-        <div class="file-list-checkbox ${isSelected ? 'checked' : ''}">
-          <i class="ph-fill ph-check"></i>
-        </div>
+      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
+        <div class="item-select-indicator"></div>
         <div class="file-list-thumbnail">
           ${file.file_type === 'video' 
             ? `<video src="${file.url_media}" preload="metadata"></video>`
-            : `<img src="${file.url_media}" alt="${file.name}">`
+            : `<img src="${file.url_media}" alt="${file.name}" loading="lazy">`
           }
         </div>
         <div class="file-list-info">
           <div class="file-list-name">${file.name}</div>
           <div class="file-list-meta">
-            <span>${file.file_type === 'video' ? 'Vídeo' : 'Imagem'}</span>
-            <span>•</span>
-            <span>${this.formatFileSize(file.file_size_kb)}</span>
-            ${file.dimensions ? `<span>•</span><span>${file.dimensions}</span>` : ''}
+            ${file.file_type === 'video' ? 'Vídeo' : 'Imagem'} • ${this.formatFileSize(file.file_size_kb)}
           </div>
-        </div>
-        <div class="file-list-actions">
-          <button class="action-btn" data-action="download" data-type="file" data-id="${file.id}">
-            <i class="ph ph-download-simple"></i>
-          </button>
-          <button class="action-btn" data-action="delete" data-type="file" data-id="${file.id}">
-            <i class="ph ph-trash"></i>
-          </button>
         </div>
       </div>
     `;
   },
 
-  toggleSelection(type, id) {
-    const key = `${type}-${id}`;
-    if (this.selectedItems.has(key)) {
-      this.selectedItems.delete(key);
-    } else {
-      this.selectedItems.add(key);
-    }
-    this.updateSelectionUI();
-  },
-
   clearSelection() {
     this.selectedItems.clear();
-    this.updateSelectionUI();
-  },
-
-  selectAll() {
-    this.folders.forEach(f => this.selectedItems.add(`folder-${f.id}`));
-    this.files.forEach(f => this.selectedItems.add(`file-${f.id}`));
+    this.lastSelectedItem = null;
     this.updateSelectionUI();
   },
 
   updateSelectionUI() {
-    // Atualizar visual dos items
     document.querySelectorAll('.folder-item, .file-item, .file-list-item').forEach(el => {
-      const type = el.classList.contains('folder-item') || (el.classList.contains('file-list-item') && el.querySelector('.ph-folder')) ? 'folder' : 'file';
+      const type = this.getItemType(el);
       const id = el.dataset.id;
       const key = `${type}-${id}`;
-      const isSelected = this.selectedItems.has(key);
-      
-      el.classList.toggle('selected', isSelected);
-      const checkbox = el.querySelector('.item-checkbox, .file-list-checkbox');
-      if (checkbox) {
-        checkbox.classList.toggle('checked', isSelected);
-      }
+      el.classList.toggle('selected', this.selectedItems.has(key));
     });
 
-    // Atualizar barra de seleção
     const selectionBar = document.getElementById('selection-bar');
     if (this.selectedItems.size > 0) {
       selectionBar.classList.add('show');
       document.getElementById('selection-count').textContent = 
-        `${this.selectedItems.size} ${this.selectedItems.size === 1 ? 'item selecionado' : 'itens selecionados'}`;
+        `${this.selectedItems.size} ${this.selectedItems.size === 1 ? 'item' : 'itens'}`;
     } else {
       selectionBar.classList.remove('show');
-    }
-  },
-
-  updateDraggingState() {
-    document.querySelectorAll('.folder-item, .file-item').forEach(el => {
-      const type = el.classList.contains('folder-item') ? 'folder' : 'file';
-      const id = el.dataset.id;
-      const key = `${type}-${id}`;
-      el.classList.toggle('dragging', this.draggedItems.has(key));
-    });
-  },
-
-  async moveItemsToFolder(targetFolderId) {
-    const items = Array.from(this.selectedItems);
-    if (items.length === 0) return;
-
-    try {
-      Notificacao.show('Movendo itens...', 'info');
-      
-      for (const item of items) {
-        const [type, id] = item.split('-');
-        
-        if (type === 'folder') {
-          await window.driveAPI.moveFolder(id, targetFolderId);
-        } else {
-          await window.driveAPI.moveFile(id, targetFolderId);
-        }
-      }
-
-      Notificacao.show('Itens movidos com sucesso!', 'success');
-      this.clearSelection();
-      await this.loadFolderContents();
-    } catch (error) {
-      console.error('[Drive] Erro ao mover itens:', error);
-      Notificacao.show('Erro ao mover itens: ' + error.message, 'error');
     }
   },
 
@@ -705,7 +636,7 @@ const Drive = {
     const items = Array.from(this.selectedItems);
     if (items.length === 0) return;
 
-    const msg = `Deseja excluir ${items.length} ${items.length === 1 ? 'item' : 'itens'}?\nEsta ação não pode ser desfeita.`;
+    const msg = `Excluir ${items.length} ${items.length === 1 ? 'item' : 'itens'}?`;
     if (!confirm(msg)) return;
 
     try {
@@ -730,18 +661,16 @@ const Drive = {
         }
       }
 
-      // Excluir do R2
       if (filesToDelete.length > 0) {
-        console.log('[Drive] Excluindo do R2:', filesToDelete);
         await window.r2API.deleteFiles(filesToDelete);
       }
 
-      Notificacao.show('Excluído com sucesso!', 'success');
+      Notificacao.show('Excluído!', 'success');
       this.clearSelection();
       await this.loadFolderContents();
     } catch (error) {
       console.error('[Drive] Erro ao excluir:', error);
-      Notificacao.show('Erro ao excluir: ' + error.message, 'error');
+      Notificacao.show('Erro: ' + error.message, 'error');
     }
   },
 
@@ -759,7 +688,7 @@ const Drive = {
     for (const item of fileItems) {
       const id = item.split('-')[1];
       await this.downloadFile(id);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Delay entre downloads
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     Notificacao.show('Downloads concluídos!', 'success');
@@ -770,30 +699,18 @@ const Drive = {
     if (!file) return;
 
     try {
-      // Extrair o nome do arquivo do path (último segmento)
       const fileName = file.path ? file.path.split('/').pop() : file.name;
-      
-      // Usar a URL pública diretamente
       const a = document.createElement('a');
       a.href = file.url_media;
-      a.download = fileName; // Nome original do R2
+      a.download = fileName;
       a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      
-      console.log('[Drive] Download iniciado:', fileName);
     } catch (error) {
-      console.error('[Drive] Erro ao baixar arquivo:', error);
+      console.error('[Drive] Erro ao baixar:', error);
       Notificacao.show('Erro ao baixar: ' + file.name, 'error');
     }
-  },
-
-  truncateName(name, max) {
-    if (!name) return '';
-    if (name.length <= max) return name;
-    const ext = name.split('.').pop();
-    return name.substring(0, max - ext.length - 4) + '...' + ext;
   },
 
   formatFileSize(kb) {
@@ -806,7 +723,6 @@ const Drive = {
     const folder = this.folders.find(f => String(f.id) === String(folderId));
     if (!folder) return;
 
-    console.log('[Drive] Navegando para pasta:', folder.name);
     this.currentFolder = folder.id;
     this.breadcrumbPath.push({ id: folder.id, name: folder.name });
     await this.loadFolderContents();
@@ -816,25 +732,22 @@ const Drive = {
     const file = this.files.find(f => String(f.id) === String(fileId));
     if (!file) return;
 
-    console.log('[Drive] Preview do arquivo:', file.name);
     const container = document.getElementById('preview-container');
     const info = document.getElementById('preview-info');
 
     if (file.file_type === 'video') {
-      container.innerHTML = `<video src="${file.url_media}" controls autoplay></video>`;
+      container.innerHTML = `<video src="${file.url_media}" controls autoplay playsinline></video>`;
     } else {
       container.innerHTML = `<img src="${file.url_media}" alt="${file.name}">`;
     }
 
     const details = [];
     if (file.dimensions) details.push(file.dimensions);
-    if (file.duration) details.push(`${file.duration}s`);
     if (file.file_size_kb) details.push(this.formatFileSize(file.file_size_kb));
-    if (file.data_de_captura) details.push(new Date(file.data_de_captura).toLocaleDateString('pt-BR'));
 
     info.innerHTML = `
       <h4>${file.name}</h4>
-      <p>${details.join(' • ')}</p>
+      ${details.length ? `<p>${details.join(' • ')}</p>` : ''}
     `;
 
     document.getElementById('modal-preview').classList.add('show');
@@ -843,12 +756,11 @@ const Drive = {
   async createFolder() {
     const name = document.getElementById('folder-name').value.trim();
     if (!name) {
-      Notificacao.show('Digite um nome para a pasta', 'warning');
+      Notificacao.show('Digite um nome', 'warning');
       return;
     }
 
     try {
-      console.log('[Drive] Criando pasta:', name);
       Notificacao.show('Criando pasta...', 'info');
       
       const result = await window.driveAPI.createFolder({
@@ -863,8 +775,8 @@ const Drive = {
       Notificacao.show('Pasta criada!', 'success');
       await this.loadFolderContents();
     } catch (error) {
-      console.error('[Drive] Erro ao criar pasta:', error);
-      Notificacao.show('Erro ao criar pasta: ' + error.message, 'error');
+      console.error('[Drive] Erro:', error);
+      Notificacao.show('Erro: ' + error.message, 'error');
     }
   },
 
@@ -930,7 +842,6 @@ const Drive = {
     }
 
     try {
-      console.log(`[Drive] Iniciando upload de ${files.length} arquivo(s)`);
       Notificacao.showProgress(0, 0, files.length);
 
       const folderPath = this.currentFolder 
@@ -944,7 +855,6 @@ const Drive = {
         const timestamp = Date.now();
         const fileName = `${folderPath}/${timestamp}-${i}.${ext}`;
 
-        console.log(`[Drive] Upload ${i + 1}/${files.length}: ${file.name}`);
         Notificacao.showProgress(((i) / files.length) * 70, i + 1, files.length);
 
         let metadata = {};
@@ -955,7 +865,6 @@ const Drive = {
         }
         
         const captureDate = this.extractCaptureDate(file);
-        console.log('[Drive] Metadados extraídos:', metadata);
 
         const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
         if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
@@ -1005,24 +914,16 @@ const Drive = {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percent = (e.loaded / e.total) * 100;
-          console.log(`[Drive] Upload progress: ${percent.toFixed(1)}%`);
-        }
-      });
-      
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          console.log('[Drive] Upload concluído com sucesso');
           resolve();
         } else {
           reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
         }
       });
       
-      xhr.addEventListener('error', () => reject(new Error('Erro de rede no upload')));
-      xhr.addEventListener('timeout', () => reject(new Error('Timeout no upload')));
+      xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
+      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
       
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type);
@@ -1032,14 +933,10 @@ const Drive = {
   },
 
   async confirmDelete(type, id) {
-    const msg = type === 'folder' 
-      ? 'Excluir esta pasta e todo seu conteúdo?' 
-      : 'Excluir este arquivo?';
-    
+    const msg = type === 'folder' ? 'Excluir esta pasta?' : 'Excluir este arquivo?';
     if (!confirm(msg)) return;
 
     try {
-      console.log(`[Drive] Excluindo ${type}: ${id}`);
       Notificacao.show('Excluindo...', 'info');
       
       let filesToDelete = [];
@@ -1047,42 +944,34 @@ const Drive = {
       if (type === 'folder') {
         const result = await window.driveAPI.deleteFolder(id);
         if (!result.success) throw new Error(result.error);
-        if (result.deletedFiles) {
-          filesToDelete = result.deletedFiles;
-        }
+        if (result.deletedFiles) filesToDelete = result.deletedFiles;
       } else {
         const file = this.files.find(f => String(f.id) === String(id));
-        if (file) {
-          filesToDelete.push(file.path);
-        }
+        if (file) filesToDelete.push(file.path);
         const result = await window.driveAPI.deleteFile(id);
         if (!result.success) throw new Error(result.error);
       }
 
-      // Excluir do R2
       if (filesToDelete.length > 0) {
-        console.log('[Drive] Excluindo do R2:', filesToDelete);
         await window.r2API.deleteFiles(filesToDelete);
       }
 
-      Notificacao.show('Excluído com sucesso!', 'success');
+      Notificacao.show('Excluído!', 'success');
+      this.clearSelection();
       await this.loadFolderContents();
     } catch (error) {
-      console.error('[Drive] Erro ao excluir:', error);
-      Notificacao.show('Erro ao excluir: ' + error.message, 'error');
+      console.error('[Drive] Erro:', error);
+      Notificacao.show('Erro: ' + error.message, 'error');
     }
   }
 };
 
-// Sobrescrever showCorrectScreen
+// Sobrescrever showCorrectScreen do Auth
 Auth.showCorrectScreen = function() {
   const loginScreen = document.getElementById('login-screen');
   const driveSystem = document.getElementById('drive-system');
   
-  if (!loginScreen || !driveSystem) {
-    console.error('[Auth] Elementos de tela não encontrados');
-    return false;
-  }
+  if (!loginScreen || !driveSystem) return false;
   
   if (this.isAuthenticated()) {
     loginScreen.style.display = 'none';
@@ -1095,4 +984,5 @@ Auth.showCorrectScreen = function() {
   }
 };
 
+// Inicializar quando DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => Drive.init());
