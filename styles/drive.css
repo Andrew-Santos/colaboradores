@@ -120,11 +120,6 @@
   text-overflow: ellipsis;
 }
 
-.client-item-files {
-  font-size: 11px;
-  opacity: 0.7;
-}
-
 .loading-clients {
   text-align: center;
   padding: 20px;
@@ -158,6 +153,9 @@
   color: var(--pt50);
   cursor: pointer;
   transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .breadcrumb-item:hover {
@@ -181,6 +179,7 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .toolbar-btn {
@@ -204,10 +203,88 @@
   border-color: var(--pt100);
 }
 
+.toolbar-btn.danger {
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.toolbar-btn.danger:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--pt25);
+  margin: 0 5px;
+}
+
+.toolbar-selection-info {
+  font-size: 13px;
+  color: var(--pt75);
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* ==================== SELECTION BAR ==================== */
+
+.selection-bar {
+  display: none;
+  padding: 10px 20px;
+  background: var(--pt100);
+  color: white;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-bar.show {
+  display: flex;
+}
+
+.selection-bar .selection-count {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.selection-bar .selection-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.selection-bar .action-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 6px;
+  background: transparent;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition);
+}
+
+.selection-bar .action-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.selection-bar .action-btn.danger:hover {
+  background: #dc3545;
+}
+
+.selection-bar .btn-cancel {
+  background: rgba(255,255,255,0.1);
+}
+
 .drive-content {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  position: relative;
 }
 
 .empty-state {
@@ -265,6 +342,7 @@
   cursor: pointer;
   transition: var(--transition);
   position: relative;
+  user-select: none;
 }
 
 .folder-item:hover,
@@ -274,7 +352,19 @@
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.folder-item i {
+.folder-item.selected,
+.file-item.selected {
+  border-color: var(--pt100);
+  background: rgba(33, 37, 41, 0.05);
+}
+
+.folder-item.drag-over {
+  border-color: #28a745;
+  background: rgba(40, 167, 69, 0.1);
+  transform: scale(1.02);
+}
+
+.folder-item > i {
   font-size: 48px;
   color: #ffc107;
   margin-bottom: 8px;
@@ -313,7 +403,7 @@
 
 .file-type-badge {
   position: absolute;
-  top: 6px;
+  bottom: 6px;
   right: 6px;
   background: rgba(0,0,0,0.7);
   color: white;
@@ -329,25 +419,68 @@
   margin-top: 4px;
 }
 
+/* ==================== CHECKBOX DE SELEÇÃO ==================== */
+
+.item-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--pt50);
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: var(--transition);
+  z-index: 5;
+}
+
+.folder-item:hover .item-checkbox,
+.file-item:hover .item-checkbox,
+.folder-item.selected .item-checkbox,
+.file-item.selected .item-checkbox,
+.drive-content.selection-mode .item-checkbox {
+  opacity: 1;
+}
+
+.item-checkbox.checked {
+  background: var(--pt100);
+  border-color: var(--pt100);
+}
+
+.item-checkbox.checked i {
+  color: white;
+  font-size: 14px;
+}
+
+/* ==================== BOTÕES DE AÇÃO ==================== */
+
 .item-actions {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: none;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: var(--transition);
+  z-index: 5;
 }
 
 .folder-item:hover .item-actions,
 .file-item:hover .item-actions {
-  display: flex;
-  gap: 4px;
+  opacity: 1;
 }
 
-.action-btn {
+.item-action-btn {
   width: 28px;
   height: 28px;
   border: none;
   border-radius: 6px;
-  background: rgba(220, 53, 69, 0.9);
+  background: rgba(0, 0, 0, 0.6);
   color: white;
   cursor: pointer;
   display: flex;
@@ -357,9 +490,13 @@
   transition: var(--transition);
 }
 
-.action-btn:hover {
-  background: #dc3545;
+.item-action-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
   transform: scale(1.1);
+}
+
+.item-action-btn.danger:hover {
+  background: #dc3545;
 }
 
 /* ==================== MODALS ==================== */
@@ -491,14 +628,8 @@
 }
 
 @keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ==================== DRAG & DROP ==================== */
@@ -509,15 +640,9 @@
   border-radius: 12px;
 }
 
-.drive-content.dragover::after {
-  content: 'Solte os arquivos aqui';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--pt100);
+.file-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
 }
 
 /* ==================== RESPONSIVE ==================== */
@@ -549,6 +674,16 @@
   .client-item-info {
     width: 100%;
   }
+
+  .selection-bar {
+    flex-wrap: wrap;
+  }
+
+  .selection-bar .selection-actions {
+    width: 100%;
+    margin-top: 8px;
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 600px) {
@@ -579,7 +714,7 @@
     gap: 8px;
   }
   
-  .folder-item i {
+  .folder-item > i {
     font-size: 36px;
   }
   
@@ -597,5 +732,9 @@
     justify-content: center;
     font-size: 12px;
     padding: 10px 12px;
+  }
+
+  .item-checkbox {
+    opacity: 1;
   }
 }
