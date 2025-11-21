@@ -4,11 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portal de colaboração - Criativa</title>
-    
-    <!-- CSS - IMPORTANTE: drive.css depois do main.css -->
     <link rel="stylesheet" href="./styles/main.css">
-    <link rel="stylesheet" href="./styles/drive.css">
-    
     <link rel="shortcut icon" href="https://www.teamcriativa.com/ICONES/favicon-96x96.png" type="image/x-icon">
    
     <meta property="og:title" content="Portal de colaboradores - Team Criativa">
@@ -16,14 +12,23 @@
     <meta property="og:image" content="https://owpboqevrtthsupugcrt.supabase.co/storage/v1/object/public/portal_criativa/LOGO-CRIATIVA/criativa-meta.jpg">
     <meta property="og:url" content="https://colaboradores.teamcriativa.com">
 
-    <!-- Ícones Phosphor -->
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+    
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css"
+    />
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <div id="bg"></div>
+  
 
   <!-- TELA DE LOGIN -->
   <div class="login-container" id="login-screen">
@@ -56,7 +61,6 @@
     </div>
 
     <div class="post-container">
-      <!-- Seleção de Cliente -->
       <div class="form-section">
         <h3><i class="ph ph-user"></i> Selecionar Cliente</h3>
         <div class="form-group">
@@ -65,22 +69,15 @@
             <option value="">Carregando clientes...</option>
           </select>
         </div>
-        
-        <!-- Preview do Cliente com Botão Drive -->
         <div id="client-preview" class="client-preview">
           <img id="client-avatar" class="client-avatar" src="" alt="Avatar do cliente">
           <div class="client-info">
             <h4 id="client-name"></h4>
             <p id="client-instagram"></p>
           </div>
-          <button class="btn-drive" id="open-drive-btn" title="Abrir Drive do Cliente">
-            <i class="ph-fill ph-folder-open"></i>
-            <span>Drive</span>
-          </button>
         </div>
       </div>
 
-      <!-- Tipo de Postagem -->
       <div class="form-section">
         <h3><i class="ph ph-image"></i> Tipo de Postagem</h3>
         <div class="post-types">
@@ -103,7 +100,6 @@
         </div>
       </div>
 
-      <!-- Upload de Mídia -->
       <div class="form-section">
         <h3><i class="ph ph-upload"></i> Upload de Mídia</h3>
         <div class="media-upload-area" id="media-upload-area">
@@ -125,7 +121,6 @@
         </div>
       </div>
 
-      <!-- Legenda -->
       <div class="form-section">
         <h3><i class="ph ph-text-aa"></i> Legenda</h3>
         <div class="form-group">
@@ -135,19 +130,17 @@
         </div>
       </div>
 
-      <!-- Data de Agendamento -->
       <div class="form-section">
         <h3><i class="ph ph-calendar"></i> Data de Agendamento</h3>
         <div class="form-group">
           <label for="schedule-datetime">Data e Hora:</label>
           <input type="datetime-local" id="schedule-datetime" class="form-control" required>
-          <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+          <small style="color: var(--pt50); margin-top: 5px; display: block;">
             Selecione quando este post deve ser publicado
           </small>
         </div>
       </div>
 
-      <!-- Ações do Formulário -->
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" id="cancel-btn">
           <i class="ph ph-x"></i> Cancelar
@@ -159,7 +152,8 @@
     </div>
   </div>
 
-  <!-- Notificação de Progresso -->
+  <!-- NOTIFICAÇÃO DE PROGRESSO -->
+  <!-- NOTIFICAÇÃO DE PROGRESSO -->
   <div class="progress-container" id="progress-container">
     <div class="progress-header">
       <h4>Enviando arquivos...</h4>
@@ -172,92 +166,6 @@
     <div class="progress-stats" id="progress-stats"></div>
   </div>
 
-  <!-- MODAL DO DRIVE -->
-  <div class="drive-modal" id="drive-modal">
-    <div class="drive-container">
-      <!-- Header do Drive -->
-      <div class="drive-header">
-        <div class="drive-title">
-          <i class="ph-fill ph-hard-drives"></i>
-          <h2>Drive do Cliente</h2>
-        </div>
-        <button class="close-drive-btn" id="close-drive-btn">
-          <i class="ph ph-x"></i>
-        </button>
-      </div>
-
-      <!-- Breadcrumb -->
-      <div class="drive-breadcrumb" id="drive-breadcrumb">
-        <span>Raiz</span>
-      </div>
-
-      <!-- Conteúdo principal -->
-      <div class="drive-content">
-        <!-- Sidebar com árvore de pastas -->
-        <div class="drive-sidebar">
-          <div class="sidebar-header">
-            <h3>Pastas</h3>
-            <button class="btn-icon" id="create-folder-btn" title="Criar nova pasta">
-              <i class="ph ph-folder-plus"></i>
-            </button>
-          </div>
-          <div class="folder-tree" id="folder-tree">
-            <div class="folder-item active">
-              <i class="ph-fill ph-folder"></i>
-              <span>Raiz</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Área principal de arquivos -->
-        <div class="drive-main">
-          <!-- Toolbar -->
-          <div class="drive-toolbar">
-            <button class="btn-icon" id="back-folder-btn" title="Voltar">
-              <i class="ph ph-arrow-left"></i>
-            </button>
-            <div class="toolbar-spacer"></div>
-            <span class="files-count" id="files-count">0 arquivos</span>
-          </div>
-
-          <!-- Grid de arquivos -->
-          <div class="drive-files-grid" id="drive-files-grid">
-            <div class="empty-state">
-              <i class="ph ph-folder-open"></i>
-              <p>Nenhum arquivo nesta pasta</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Área de upload -->
-      <div class="drive-upload-section">
-        <h3><i class="ph ph-cloud-arrow-up"></i> Upload de Arquivos</h3>
-        
-        <div class="drive-upload-area" id="drive-upload-area">
-          <div class="upload-icon">
-            <i class="ph ph-cloud-arrow-up"></i>
-          </div>
-          <div class="upload-text">
-            Clique para selecionar ou arraste arquivos aqui
-          </div>
-          <div class="upload-subtext">
-            JPG, PNG, MP4, MOV, AVI
-          </div>
-          <input type="file" id="drive-files" class="file-input" multiple accept="image/*,video/*">
-        </div>
-
-        <!-- Preview dos arquivos selecionados -->
-        <div id="drive-selected-files" class="drive-selected-files"></div>
-
-        <!-- Botão de upload -->
-        <button class="btn btn-primary" id="upload-drive-btn" style="margin-top: 1rem;">
-          <i class="ph ph-upload"></i> Enviar para Drive
-        </button>
-      </div>
-    </div>
-  </div>
-
   <!-- Scripts Externos -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.waves.min.js"></script>
@@ -267,9 +175,10 @@
   <script src="./scripts/notificacao.js"></script>
   <script src="./scripts/renderer.js"></script>
   <script src="./scripts/send.js"></script>
-  <script src="./scripts/drive.js"></script>
   <script src="./auth.js"></script>
   <script src="./main.js"></script>
   <script src="https://www.teamcriativa.com/SCRIPTS/logo.js"></script>
 </body>
+
 </html>
+
