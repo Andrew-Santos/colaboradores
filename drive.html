@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Criativa</title>
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/drive.css">
+    <link rel="shortcut icon" href="https://www.teamcriativa.com/ICONES/favicon-96x96.png" type="image/x-icon">
+    
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css"/>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="bg"></div>
+
+  <!-- TELA DE LOGIN -->
+  <div class="login-container" id="login-screen">
+    <img id="logo">
+    <form id="login-form">
+      <div class="input-group">
+        <i class="ph ph-envelope"></i>
+        <input type="email" id="login-email" placeholder="E-mail" required>
+      </div>
+      <div class="input-group">
+        <i class="ph ph-lock"></i>
+        <input type="password" id="login-password" placeholder="Senha" required>
+      </div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+  <!-- SISTEMA DE DRIVE -->
+  <div id="drive-system">
+    <div class="system-header">
+      <img id="logo">
+      <h1><i class="ph ph-cloud"></i> Drive Criativa</h1>
+      <div class="header-actions">
+        <a href="./index.html" class="btn-nav">
+          <i class="ph ph-calendar-plus"></i> Agendamento
+        </a>
+        <button class="btn-logout" id="btn-logout">
+          <i class="ph ph-sign-out"></i> Sair
+        </button>
+      </div>
+    </div>
+
+    <div class="drive-container">
+      <!-- Sidebar com clientes -->
+      <aside class="drive-sidebar">
+        <div class="sidebar-header">
+          <h3><i class="ph ph-users"></i> Clientes</h3>
+        </div>
+        <div class="client-list" id="client-list">
+          <div class="loading-clients">Carregando...</div>
+        </div>
+      </aside>
+
+      <!-- Área principal do drive -->
+      <main class="drive-main">
+        <!-- Breadcrumb -->
+        <div class="drive-breadcrumb" id="breadcrumb">
+          <span class="breadcrumb-item active">Selecione um cliente</span>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="drive-toolbar" id="drive-toolbar" style="display: none;">
+          <button class="toolbar-btn" id="btn-new-folder">
+            <i class="ph ph-folder-plus"></i> Nova Pasta
+          </button>
+          <button class="toolbar-btn" id="btn-upload">
+            <i class="ph ph-upload"></i> Upload
+          </button>
+          <input type="file" id="file-input" multiple accept="image/*,video/*" style="display: none;">
+        </div>
+
+        <!-- Conteúdo do Drive -->
+        <div class="drive-content" id="drive-content">
+          <div class="empty-state">
+            <i class="ph ph-folder-open"></i>
+            <p>Selecione um cliente para ver os arquivos</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal Nova Pasta -->
+  <div class="modal-overlay" id="modal-new-folder">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="ph ph-folder-plus"></i> Nova Pasta</h3>
+        <button class="modal-close" id="modal-close-folder">
+          <i class="ph ph-x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="folder-name">Nome da pasta:</label>
+          <input type="text" id="folder-name" class="form-control" placeholder="Ex: Fotos Dezembro">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel-folder">Cancelar</button>
+        <button class="btn btn-primary" id="btn-create-folder">Criar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Preview -->
+  <div class="modal-overlay" id="modal-preview">
+    <div class="modal-content modal-preview-content">
+      <button class="modal-close preview-close" id="modal-close-preview">
+        <i class="ph ph-x"></i>
+      </button>
+      <div class="preview-container" id="preview-container"></div>
+      <div class="preview-info" id="preview-info"></div>
+    </div>
+  </div>
+
+  <!-- Notificação de Progresso -->
+  <div class="progress-container" id="progress-container">
+    <div class="progress-header">
+      <h4>Enviando arquivos...</h4>
+      <span class="progress-percentage" id="progress-percentage">0%</span>
+    </div>
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
+    </div>
+    <div class="progress-files" id="progress-files">Arquivo 0 de 0</div>
+    <div class="progress-stats" id="progress-stats"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.waves.min.js"></script>
+  
+  <script src="./config.js"></script>
+  <script src="./scripts/notificacao.js"></script>
+  <script src="./auth.js"></script>
+  <script src="./scripts/drive.js"></script>
+  <script src="https://www.teamcriativa.com/SCRIPTS/logo.js"></script>
+</body>
+</html>

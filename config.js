@@ -1,20 +1,16 @@
 // Configuração da API
 const CONFIG = {
-  // API principal (autenticação e posts)
   API_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : '', // Vazio = mesma origem (colaboradores.teamcriativa.com)
-  
-  // API do Cloudflare R2 (uploads)
+    : '',
   R2_API_URL: 'https://portal.teamcriativa.com/api/cloudflare'
 };
 
 console.log('[Config] API URL:', CONFIG.API_URL || 'Mesma origem');
 console.log('[Config] R2 API URL:', CONFIG.R2_API_URL);
 
-// Wrapper para chamadas à API principal
+// ==================== SUPABASE API ====================
 window.supabaseAPI = {
-  // LOGIN
   async login(email, password) {
     try {
       const response = await fetch(`${CONFIG.API_URL}/auth/login`, {
@@ -24,252 +20,214 @@ window.supabaseAPI = {
       });
       return await response.json();
     } catch (error) {
-      console.error('[API] Erro no login:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // LOGOUT
   async logout() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`${CONFIG.API_URL}/auth/logout`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
       return await response.json();
     } catch (error) {
-      console.error('[API] Erro no logout:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // VERIFICAR TOKEN
   async verifyToken() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`${CONFIG.API_URL}/auth/verify`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
       return await response.json();
     } catch (error) {
-      console.error('[API] Erro ao verificar token:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // OBTER CLIENTES
   async getClients() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`${CONFIG.API_URL}/api/clients`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       return await response.json();
     } catch (error) {
-      console.error('[API] Erro ao obter clientes:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // AGENDAR POST
   async schedulePost(postData) {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`${CONFIG.API_URL}/api/schedule-post`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(postData)
       });
       return await response.json();
     } catch (error) {
-      console.error('[API] Erro ao agendar post:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // SALVAR MÍDIAS DO POST
   async saveMedia(postId, mediaFiles) {
     try {
-      console.log('[API] Salvando mídias - Post ID:', postId);
-      console.log('[API] Número de arquivos:', mediaFiles.length);
-      
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`${CONFIG.API_URL}/api/save-media`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ postId, mediaFiles })
       });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao salvar mídias');
-      }
-      
-      console.log('[API] Mídias salvas com sucesso');
-      return result;
-      
+      return await response.json();
     } catch (error) {
-      console.error('[API] Erro ao salvar mídias:', error);
       return { success: false, error: error.message };
     }
   }
 };
 
-// Wrapper para chamadas à API do R2
+// ==================== DRIVE API ====================
+window.driveAPI = {
+  async getFolderContents(clientId, folderId = null) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const url = new URL(`${CONFIG.API_URL}/api/drive/contents`);
+      url.searchParams.append('clientId', clientId);
+      if (folderId) url.searchParams.append('folderId', folderId);
+
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  async createFolder(data) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/folder`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  async deleteFolder(folderId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/folder/${folderId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  async saveFile(data) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/file`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  async deleteFile(fileId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/file/${fileId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+};
+
+// ==================== R2 API ====================
 window.r2API = {
-  // GERAR PRESIGNED URL PARA UM ARQUIVO
   async generateUploadUrl(fileName, contentType, fileSize) {
     try {
-      console.log('[R2 API] Gerando presigned URL para:', fileName);
-      console.log('[R2 API] Endpoint:', `${CONFIG.R2_API_URL}/generate-upload-url`);
-      
       const response = await fetch(`${CONFIG.R2_API_URL}/generate-upload-url`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fileName,
-          contentType,
-          fileSize
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, contentType, fileSize })
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[R2 API] Resposta de erro:', errorText);
-        throw new Error(`Erro HTTP ${response.status}: ${errorText.substring(0, 100)}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
-
-      console.log('[R2 API] Presigned URL gerada com sucesso');
       return { success: true, ...result };
-
     } catch (error) {
-      console.error('[R2 API] Erro ao gerar URL:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // GERAR PRESIGNED URLs PARA MÚLTIPLOS ARQUIVOS
   async generateUploadUrls(files) {
     try {
-      console.log('[R2 API] Gerando presigned URLs para', files.length, 'arquivos');
-      
       const response = await fetch(`${CONFIG.R2_API_URL}/generate-upload-urls`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files })
       });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao gerar URLs');
-      }
-
-      console.log('[R2 API] Presigned URLs geradas com sucesso');
-      return result;
-
+      return await response.json();
     } catch (error) {
-      console.error('[R2 API] Erro ao gerar URLs:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // VERIFICAR SE ARQUIVO FOI ENVIADO
   async verifyUpload(fileName) {
     try {
-      console.log('[R2 API] Verificando upload de:', fileName);
-      
       const response = await fetch(`${CONFIG.R2_API_URL}/verify-upload`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName })
       });
-
-      const result = await response.json();
-      
-      console.log('[R2 API] Verificação concluída');
-      return result;
-
+      return await response.json();
     } catch (error) {
-      console.error('[R2 API] Erro ao verificar upload:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // DELETAR ARQUIVO
   async deleteFile(fileName) {
     try {
-      console.log('[R2 API] Deletando arquivo:', fileName);
-      
       const response = await fetch(`${CONFIG.R2_API_URL}/delete/${encodeURIComponent(fileName)}`, {
         method: 'DELETE'
       });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao deletar arquivo');
-      }
-
-      console.log('[R2 API] Arquivo deletado com sucesso');
-      return result;
-
+      return await response.json();
     } catch (error) {
-      console.error('[R2 API] Erro ao deletar arquivo:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // DELETAR MÚLTIPLOS ARQUIVOS
   async deleteFiles(fileNames) {
     try {
-      console.log('[R2 API] Deletando', fileNames.length, 'arquivos');
-      
       const response = await fetch(`${CONFIG.R2_API_URL}/delete-multiple`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileNames })
       });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao deletar arquivos');
-      }
-
-      console.log('[R2 API] Arquivos deletados com sucesso');
-      return result;
-
+      return await response.json();
     } catch (error) {
-      console.error('[R2 API] Erro ao deletar arquivos:', error);
       return { success: false, error: error.message };
     }
   }
