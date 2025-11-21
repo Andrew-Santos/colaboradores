@@ -406,6 +406,57 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
 
 // ============ ROTAS DO DRIVE ============
 
+// 🆕 NOVO ENDPOINT - Storage Usage
+app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar todos os arquivos com id_client e file_size_kb
+    const { data, error } = await supabase
+      .from('drive_files')
+      .select('id_client, file_size_kb');
+
+    if (error) throw error;
+
+    // Agrupar e somar o tamanho por cliente
+    const storageByClient = {};
+    
+    if (data && data.length > 0) {
+      data.forEach(file => {
+        if (file.id_client) {
+          if (!storageByClient[file.id_client]) {
+            storageByClient[file.id_client] = 0;
+          }
+          storageByClient[file.id_client] += (file.file_size_kb || 0);
+        }
+      });
+    }
+
+    // Converter para array no formato esperado
+    const result = Object.entries(storageByClient).map(([id_client, total_size_kb]) => ({
+      id_client: parseInt(id_client),
+      total_size_kb
+    }));
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('[Drive Storage] Erro:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao calcular armazenamento' 
+    });
+  }
+});
+
 app.get('/api/drive/contents', verifyToken, async (req, res) => {
   try {
     const { clientId, folderId } = req.query;
