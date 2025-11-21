@@ -65,6 +65,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       Notificacao.show(result.error || 'Login falhou. Verifique suas credenciais.', 'error');
     }
   });
+   // Botão abrir Drive
+  document.getElementById('open-drive-btn')?.addEventListener('click', () => {
+    const clientId = document.getElementById('client-select').value;
+    if (clientId) {
+      DriveManager.openDrive(parseInt(clientId));
+    } else {
+      Notificacao.show('Selecione um cliente primeiro', 'warning');
+    }
+  });
+
+  // Botão fechar Drive
+  document.getElementById('close-drive-btn')?.addEventListener('click', () => {
+    DriveManager.closeDrive();
+  });
+
+  // Fechar modal clicando fora
+  document.getElementById('drive-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'drive-modal') {
+      DriveManager.closeDrive();
+    }
+  });
 
   // Logout
   document.getElementById('btn-logout').addEventListener('click', async () => {

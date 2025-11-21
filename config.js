@@ -276,3 +276,122 @@ window.r2API = {
 };
 
 window.CONFIG = CONFIG;
+
+// Adicione este objeto ao final do seu config.js existente
+
+// Wrapper para chamadas à API do Drive
+window.driveAPI = {
+  // OBTER PASTAS DO CLIENTE
+  async getFolders(clientId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/folders/${clientId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Drive API] Erro ao obter pastas:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // CRIAR NOVA PASTA
+  async createFolder(name, idClient, idParent = null) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/folders`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, id_client: idClient, id_parent: idParent })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Drive API] Erro ao criar pasta:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // OBTER ARQUIVOS DE UMA PASTA
+  async getFiles(folderId = 'root') {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/files/${folderId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Drive API] Erro ao obter arquivos:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // SALVAR ARQUIVO NO DRIVE
+  async saveFile(fileData) {
+    try {
+      console.log('[Drive API] Salvando arquivo no drive');
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/files`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(fileData)
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao salvar arquivo');
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('[Drive API] Erro ao salvar arquivo:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // DELETAR ARQUIVO
+  async deleteFile(fileId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Drive API] Erro ao deletar arquivo:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // DELETAR PASTA
+  async deleteFolder(folderId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/folders/${folderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Drive API] Erro ao deletar pasta:', error);
+      return { success: false, error: error.message };
+    }
+  }
+};
