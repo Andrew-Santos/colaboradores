@@ -68,12 +68,45 @@
         <!-- Toolbar -->
         <div class="drive-toolbar" id="drive-toolbar" style="display: none;">
           <button class="toolbar-btn" id="btn-new-folder">
-            <i class="ph ph-folder-plus"></i> Nova Pasta
+            <i class="ph ph-folder-plus"></i>
+            <span>Nova Pasta</span>
           </button>
           <button class="toolbar-btn" id="btn-upload">
-            <i class="ph ph-upload"></i> Upload
+            <i class="ph ph-upload"></i>
+            <span>Upload</span>
           </button>
           <input type="file" id="file-input" multiple accept="image/*,video/*" style="display: none;">
+          
+          <div class="view-controls">
+            <button class="view-btn active" data-view="compact">
+              <i class="ph ph-squares-four"></i>
+            </button>
+            <button class="view-btn" data-view="grid">
+              <i class="ph ph-grid-four"></i>
+            </button>
+            <button class="view-btn" data-view="list">
+              <i class="ph ph-list"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Seleção -->
+        <div class="selection-bar" id="selection-bar">
+          <span class="selection-count" id="selection-count">0 itens selecionados</span>
+          <div class="selection-actions">
+            <button class="selection-btn" id="btn-download-selected">
+              <i class="ph ph-download-simple"></i>
+              Baixar
+            </button>
+            <button class="selection-btn danger" id="btn-delete-selected">
+              <i class="ph ph-trash"></i>
+              Excluir
+            </button>
+            <button class="selection-btn" id="btn-deselect">
+              <i class="ph ph-x"></i>
+              Cancelar
+            </button>
+          </div>
         </div>
 
         <!-- Conteúdo do Drive -->
