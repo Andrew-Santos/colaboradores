@@ -2,11 +2,11 @@
 const CONFIG = {
   API_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : '',
+    : window.location.origin, // Em produção usa a origem atual
   R2_API_URL: 'https://portal.teamcriativa.com/api/cloudflare'
 };
 
-console.log('[Config] API URL:', CONFIG.API_URL || 'Mesma origem');
+console.log('[Config] API URL:', CONFIG.API_URL);
 console.log('[Config] R2 API URL:', CONFIG.R2_API_URL);
 
 // ==================== SUPABASE API ====================
@@ -97,15 +97,15 @@ window.driveAPI = {
   async getFolderContents(clientId, folderId = null) {
     try {
       const token = localStorage.getItem('auth_token');
-      const url = new URL(`${CONFIG.API_URL}/api/drive/contents`);
-      url.searchParams.append('clientId', clientId);
-      if (folderId) url.searchParams.append('folderId', folderId);
+      let url = `${CONFIG.API_URL}/api/drive/contents?clientId=${clientId}`;
+      if (folderId) url += `&folderId=${folderId}`;
 
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       return await response.json();
     } catch (error) {
+      console.error('[Drive API] Erro:', error);
       return { success: false, error: error.message };
     }
   },
@@ -120,6 +120,7 @@ window.driveAPI = {
       });
       return await response.json();
     } catch (error) {
+      console.error('[Drive API] Erro:', error);
       return { success: false, error: error.message };
     }
   },
@@ -133,6 +134,7 @@ window.driveAPI = {
       });
       return await response.json();
     } catch (error) {
+      console.error('[Drive API] Erro:', error);
       return { success: false, error: error.message };
     }
   },
@@ -147,6 +149,7 @@ window.driveAPI = {
       });
       return await response.json();
     } catch (error) {
+      console.error('[Drive API] Erro:', error);
       return { success: false, error: error.message };
     }
   },
@@ -160,6 +163,7 @@ window.driveAPI = {
       });
       return await response.json();
     } catch (error) {
+      console.error('[Drive API] Erro:', error);
       return { success: false, error: error.message };
     }
   }
