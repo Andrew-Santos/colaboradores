@@ -93,6 +93,7 @@ window.supabaseAPI = {
 };
 
 // ==================== DRIVE API ====================
+// ==================== DRIVE API ====================
 window.driveAPI = {
   async getFolderContents(clientId, folderId = null) {
     try {
@@ -109,39 +110,26 @@ window.driveAPI = {
       return { success: false, error: error.message };
     }
   },
+
   async getClientsStorageUsage() {
-  try {
-    // Query que soma file_size_kb agrupado por id_client
-    const { data, error } = await supabase
-      .from('drive_files')
-      .select('id_client, file_size_kb')
-    
-    if (error) throw error;
-
-    // Agrupa e soma manualmente (Supabase não suporta GROUP BY diretamente)
-    const storageByClient = {};
-    
-    data.forEach(file => {
-      if (file.id_client) {
-        if (!storageByClient[file.id_client]) {
-          storageByClient[file.id_client] = 0;
-        }
-        storageByClient[file.id_client] += (file.file_size_kb || 0);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/drive/storage-usage`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-    });
 
-    // Converte para array no formato esperado
-    const result = Object.entries(storageByClient).map(([id_client, total_size_kb]) => ({
-      id_client: parseInt(id_client),
-      total_size_kb
-    }));
-
-    return { success: true, data: result };
-  } catch (error) {
-    console.error('[DriveAPI] Erro ao buscar armazenamento:', error);
-    return { success: false, error: error.message };
-  }
-},
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('[DriveAPI] Erro ao buscar armazenamento:', error);
+      return { success: false, error: error.message };
+    }
+  },
 
   async createFolder(data) {
     try {
