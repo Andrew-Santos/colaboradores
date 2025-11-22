@@ -993,20 +993,6 @@ const Drive = {
     }
 
     try {
-      // Inicializar estatísticas
-      this.uploadStats = {
-        totalFiles: files.length,
-        completedFiles: 0,
-        totalBytes: files.reduce((sum, f) => sum + f.size, 0),
-        uploadedBytes: 0,
-        startTime: Date.now(),
-        speeds: [],
-        currentFileName: ''
-      };
-
-      // Mostrar barra de progresso
-      Notificacao.showDetailedProgress(0, 0, files.length, this.uploadStats);
-
       const folderPath = this.currentFolder 
         ? `drive/client-${this.selectedClient.id}/folder-${this.currentFolder}`
         : `drive/client-${this.selectedClient.id}`;
@@ -1016,8 +1002,14 @@ const Drive = {
         file,
         index,
         folderPath,
-        status: 'pending'
+        status: 'pending',
+        size: file.size,
+        name: file.name,
+        type: file.type
       }));
+
+      // Mostrar interface multi-arquivo
+      Notificacao.multiProgress.show(this.uploadQueue);
 
       this.activeUploads = 0;
 
@@ -1029,26 +1021,21 @@ const Drive = {
 
       await Promise.all(uploadPromises);
 
-      // Upload completo
-      Notificacao.showDetailedProgress(100, files.length, files.length, {
-        ...this.uploadStats,
-        currentFileName: '✓ Todos os arquivos enviados!'
-      });
-
+      // Upload completo - aguardar 2 segundos antes de fechar
       setTimeout(async () => {
-        Notificacao.hideProgress();
+        Notificacao.multiProgress.hide();
         Notificacao.show(`${files.length} arquivo(s) enviado(s)!`, 'success');
         
         await this.loadClientsStorage();
         this.renderClientList();
         document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
-      }, 1000);
+      }, 2000);
       
       await this.loadFolderContents();
       
     } catch (error) {
       console.error('[Drive] Erro no upload:', error);
-      Notificacao.hideProgress();
+      Notificacao.multiProgress.hide();
       Notificacao.show('Erro no upload: ' + error.message, 'error');
     }
   },
@@ -1084,8 +1071,8 @@ const Drive = {
     const timestamp = Date.now();
     const fileName = `${folderPath}/${timestamp}-${index}.${ext}`;
 
-    // Atualizar nome do arquivo atual
-    this.uploadStats.currentFileName = file.name;
+    // Marcar como fazendo upload
+    Notificacao.multiProgress.setFileUploading(index);
 
     // Extrair metadados
     let metadata = isVideo 
@@ -1099,11 +1086,33 @@ const Drive = {
     if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
 
     // Upload do arquivo principal com callback de progresso
-    const fileStartBytes = this.uploadStats.uploadedBytes;
+    let lastTime = Date.now();
+    let lastLoaded = 0;
+    let speeds = [];
+
     await this.uploadToR2WithProgress(file, urlResult.uploadUrl, (loaded) => {
-      this.uploadStats.uploadedBytes = fileStartBytes + loaded;
-      this.updateProgressUI();
+      const now = Date.now();
+      const timeDiff = (now - lastTime) / 1000;
+      const bytesDiff = loaded - lastLoaded;
+      
+      if (timeDiff > 0) {
+        const speed = bytesDiff / timeDiff;
+        speeds.push(speed);
+        if (speeds.length > 5) speeds.shift();
+      }
+      
+      const avgSpeed = speeds.length > 0 
+        ? speeds.reduce((a, b) => a + b, 0) / speeds.length 
+        : 0;
+      
+      lastTime = now;
+      lastLoaded = loaded;
+      
+      Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
     });
+
+    // Marcar como processando (gerando thumbnail)
+    Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
 
     // Gerar e fazer upload do thumbnail
     let thumbnailUrl = null;
@@ -1129,6 +1138,9 @@ const Drive = {
       console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
     }
     
+    // Marcar como processando (salvando no banco)
+    Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
+
     // Salvar registro no banco
     await window.driveAPI.saveFile({
       clientId: this.selectedClient.id,
@@ -1144,36 +1156,19 @@ const Drive = {
       duration: metadata.duration || null,
       dataDeCaptura: captureDate
     });
+
+    // Marcar como concluído
+    Notificacao.multiProgress.setFileCompleted(index);
   },
 
   // Upload para R2 com callback de progresso
   uploadToR2WithProgress(file, uploadUrl, onProgress = null) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
-      let lastTime = Date.now();
-      let lastLoaded = 0;
 
       if (onProgress) {
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
-            const now = Date.now();
-            const timeDiff = (now - lastTime) / 1000;
-            const bytesDiff = e.loaded - lastLoaded;
-            
-            if (timeDiff > 0) {
-              const speedBps = bytesDiff / timeDiff;
-              this.uploadStats.speeds.push(speedBps);
-              
-              // Manter apenas últimas 10 medições
-              if (this.uploadStats.speeds.length > 10) {
-                this.uploadStats.speeds.shift();
-              }
-            }
-            
-            lastTime = now;
-            lastLoaded = e.loaded;
-            
             onProgress(e.loaded);
           }
         });
@@ -1197,37 +1192,9 @@ const Drive = {
     });
   },
 
-  // Atualizar UI de progresso
+  // Atualizar UI de progresso (não usado mais, mantido para compatibilidade)
   updateProgressUI() {
-    const percentage = (this.uploadStats.uploadedBytes / this.uploadStats.totalBytes) * 100;
-    
-    // Calcular velocidade média
-    const avgSpeed = this.uploadStats.speeds.length > 0
-      ? this.uploadStats.speeds.reduce((a, b) => a + b, 0) / this.uploadStats.speeds.length
-      : 0;
-    
-    // Calcular tempo decorrido
-    const elapsed = Date.now() - this.uploadStats.startTime;
-    
-    // Calcular ETA
-    const remainingBytes = this.uploadStats.totalBytes - this.uploadStats.uploadedBytes;
-    const eta = avgSpeed > 0 ? (remainingBytes / avgSpeed) * 1000 : 0;
-
-    const stats = {
-      ...this.uploadStats,
-      speed: this.formatSpeed(avgSpeed),
-      elapsed: this.formatTime(elapsed),
-      eta: eta > 0 ? this.formatTime(eta) : '—',
-      uploadedSize: this.formatBytes(this.uploadStats.uploadedBytes),
-      totalSize: this.formatBytes(this.uploadStats.totalBytes)
-    };
-
-    Notificacao.showDetailedProgress(
-      percentage,
-      this.uploadStats.completedFiles,
-      this.uploadStats.totalFiles,
-      stats
-    );
+    // Removido - agora usa Notificacao.multiProgress
   },
 
   async confirmDelete(type, id) {

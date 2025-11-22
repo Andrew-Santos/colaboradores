@@ -1,4 +1,5 @@
 const Notificacao = {
+  // Notificações simples (mantidas)
   show(message, type = 'info') {
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
@@ -25,223 +26,308 @@ const Notificacao = {
     }, 4000);
   },
 
-  showProgress(percentage, current, total, stats = null) {
-    const container = document.getElementById('progress-container');
-    const fill = document.getElementById('progress-bar-fill');
-    const percentText = document.getElementById('progress-percentage');
-    const filesText = document.getElementById('progress-files');
-    const statsText = document.getElementById('progress-stats');
+  // Sistema de progresso multi-arquivo
+  multiProgress: {
+    container: null,
+    files: [],
+    totalSize: 0,
+    uploadedSize: 0,
+    startTime: 0,
+    activeUploads: 0,
+    completedFiles: 0,
+    updateInterval: null,
 
-    if (!container || !fill || !percentText || !filesText) {
-      console.warn('[Notificacao] Elementos de progresso não encontrados');
-      return;
-    }
-
-    container.classList.add('show');
-    container.classList.remove('completed', 'error');
-    
-    fill.style.transition = percentage > 0 ? 'width 0.3s ease' : 'none';
-    fill.style.width = `${Math.max(percentage, 1)}%`;
-    
-    percentText.textContent = `${Math.round(percentage)}%`;
-    
-    if (percentage === 0 || percentage < 1) {
-      filesText.innerHTML = 'Preparando upload...';
-      if (statsText) statsText.textContent = '';
-    } else if (percentage >= 100) {
-      filesText.innerHTML = '<i class="ph ph-check-circle"></i> Concluído! ' + total + ' arquivo(s)';
-      if (statsText) statsText.textContent = '';
-    } else {
-      filesText.textContent = `Enviando arquivo ${current} de ${total}`;
+    init() {
+      if (this.container) return;
       
-      if (statsText && stats) {
-        const parts = [];
-        
-        if (stats.loaded && stats.total) {
-          parts.push(`${this.formatSize(stats.loaded)}/${this.formatSize(stats.total)}`);
-        }
-        
-        if (stats.speed) {
-          parts.push(`<i class="ph ph-gauge"></i> ${stats.speed}`);
-        }
-        
-        if (stats.elapsed) {
-          parts.push(`<i class="ph ph-timer"></i> ${stats.elapsed}`);
-        }
-        
-        if (stats.eta) {
-          parts.push(`<i class="ph ph-hourglass"></i> ${stats.eta}`);
-        }
-        
-        statsText.innerHTML = parts.join(' • ');
-      }
-    }
-  },
+      this.container = document.createElement('div');
+      this.container.className = 'multi-progress-container';
+      this.container.id = 'multiProgress';
+      this.container.innerHTML = `
+        <div class="multi-progress-header">
+          <div class="multi-progress-title">
+            <h4>
+              <i class="ph ph-cloud-arrow-up"></i>
+              Enviando Arquivos
+            </h4>
+            <span class="subtitle">Uploads simultâneos</span>
+          </div>
+          <div class="multi-progress-stats">
+            <div class="multi-progress-percentage" id="globalPercentage">0%</div>
+            <div class="multi-progress-speed" id="globalSpeed">
+              <i class="ph ph-gauge"></i> 0 Mbps
+            </div>
+          </div>
+        </div>
 
-  // Nova função para progresso detalhado do Drive
-  showDetailedProgress(percentage, currentFile, totalFiles, stats) {
-    const container = document.getElementById('progress-container');
-    const fill = document.getElementById('progress-bar-fill');
-    const percentText = document.getElementById('progress-percentage');
-    const filesText = document.getElementById('progress-files');
-    const statsText = document.getElementById('progress-stats');
+        <div class="multi-progress-global">
+          <div class="global-bar-container">
+            <div class="global-bar-fill" id="globalBar" style="width: 0%"></div>
+          </div>
+          <div class="global-info">
+            <span><i class="ph ph-files"></i> <span id="fileCount">0/0</span></span>
+            <span><i class="ph ph-hard-drive"></i> <span id="sizeInfo">0MB/0MB</span></span>
+            <span><i class="ph ph-timer"></i> <span id="timeInfo">0:00</span></span>
+          </div>
+        </div>
 
-    if (!container || !fill || !percentText || !filesText) {
-      console.warn('[Notificacao] Elementos de progresso não encontrados');
-      return;
-    }
+        <div class="multi-progress-files" id="filesList"></div>
 
-    container.classList.add('show');
-    container.classList.remove('completed', 'error');
-    
-    // Atualizar barra
-    fill.style.transition = percentage > 0 ? 'width 0.3s ease' : 'none';
-    fill.style.width = `${Math.min(Math.max(percentage, 0), 100)}%`;
-    
-    // Atualizar porcentagem
-    percentText.textContent = `${Math.round(percentage)}%`;
-    
-    // Atualizar texto do arquivo
-    if (percentage === 0 || !stats.currentFileName) {
-      filesText.innerHTML = '<i class="ph ph-spinner"></i> Preparando uploads...';
-    } else if (percentage >= 100) {
-      filesText.innerHTML = '<i class="ph ph-check-circle"></i> Todos os arquivos enviados!';
-    } else {
-      const fileIcon = stats.currentFileName.includes('✓') 
-        ? '<i class="ph ph-check-circle"></i>' 
-        : '<i class="ph ph-upload"></i>';
-      
-      filesText.innerHTML = `
-        ${fileIcon} 
-        <span class="current-file-name">${this.truncateFileName(stats.currentFileName, 30)}</span>
-        <span class="file-counter">(${currentFile}/${totalFiles})</span>
+        <div class="multi-progress-footer">
+          <div class="footer-info">
+            <i class="ph ph-info"></i>
+            <span id="footerText">Preparando uploads...</span>
+          </div>
+          <div class="footer-actions">
+            <button class="footer-btn close" onclick="Notificacao.multiProgress.hide()">
+              <i class="ph ph-x"></i> Fechar
+            </button>
+          </div>
+        </div>
       `;
-    }
-    
-    // Atualizar estatísticas detalhadas
-    if (statsText) {
-      if (percentage === 0) {
-        statsText.innerHTML = 'Inicializando...';
-      } else if (percentage >= 100) {
-        const totalTime = Date.now() - stats.startTime;
-        const avgSpeed = stats.totalBytes / (totalTime / 1000);
-        statsText.innerHTML = `
-          <span><i class="ph ph-check"></i> ${this.formatSize(stats.totalBytes)} enviados</span>
-          <span><i class="ph ph-gauge"></i> ${this.formatSpeed(avgSpeed)}</span>
-          <span><i class="ph ph-timer"></i> ${this.formatTime(totalTime)}</span>
-        `;
-      } else {
-        const parts = [];
-        
-        // Tamanho enviado / total
-        if (stats.uploadedSize && stats.totalSize) {
-          parts.push(`<span><i class="ph ph-hard-drive"></i> ${stats.uploadedSize}/${stats.totalSize}</span>`);
-        }
-        
-        // Velocidade atual
-        if (stats.speed) {
-          parts.push(`<span><i class="ph ph-gauge"></i> ${stats.speed}</span>`);
-        }
-        
-        // Tempo decorrido
-        if (stats.elapsed) {
-          parts.push(`<span><i class="ph ph-timer"></i> ${stats.elapsed}</span>`);
-        }
-        
-        // Tempo estimado restante
-        if (stats.eta && stats.eta !== '—') {
-          parts.push(`<span><i class="ph ph-hourglass"></i> ${stats.eta} restante</span>`);
-        }
-        
-        statsText.innerHTML = parts.join('');
+      
+      document.body.appendChild(this.container);
+    },
+
+    show(files) {
+      this.init();
+      
+      // Reset
+      this.files = files;
+      this.totalSize = files.reduce((sum, f) => sum + (f.file?.size || f.size || 0), 0);
+      this.uploadedSize = 0;
+      this.startTime = Date.now();
+      this.activeUploads = 0;
+      this.completedFiles = 0;
+      
+      // Criar cards
+      const filesList = document.getElementById('filesList');
+      filesList.innerHTML = files.map((file, index) => this.createFileCard(file, index)).join('');
+      
+      // Mostrar
+      this.container.classList.add('show');
+      
+      // Atualizar periodicamente
+      if (this.updateInterval) clearInterval(this.updateInterval);
+      this.updateInterval = setInterval(() => this.updateGlobal(), 200);
+    },
+
+    hide() {
+      if (this.container) {
+        this.container.classList.remove('show');
       }
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+    },
+
+    createFileCard(file, index) {
+      const fileName = file.file?.name || file.name || `Arquivo ${index + 1}`;
+      const fileSize = file.file?.size || file.size || 0;
+      const type = file.file?.type || file.type || '';
+      
+      let icon = 'ph-file';
+      if (type.startsWith('image/')) icon = 'ph-image';
+      else if (type.startsWith('video/')) icon = 'ph-video-camera';
+      
+      return `
+        <div class="file-progress-card pending" id="file-${index}" data-index="${index}">
+          <div class="file-card-header">
+            <div class="file-icon">
+              <i class="ph ${icon}"></i>
+            </div>
+            <div class="file-card-info">
+              <div class="file-card-name" title="${fileName}">${this.truncateFileName(fileName)}</div>
+              <div class="file-card-meta">
+                <span>${this.formatSize(fileSize)}</span>
+              </div>
+            </div>
+            <div class="file-card-status pending">
+              <i class="ph ph-clock"></i> Aguardando
+            </div>
+          </div>
+          <div class="file-card-progress">
+            <div class="file-progress-bar">
+              <div class="file-progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="file-progress-details">
+              <span>0%</span>
+              <span>—</span>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    updateFileCard(index, progress, speed, status, message = null) {
+      const card = document.getElementById(`file-${index}`);
+      if (!card) return;
+
+      card.className = `file-progress-card ${status}`;
+      
+      const statusBadge = card.querySelector('.file-card-status');
+      const progressFill = card.querySelector('.file-progress-fill');
+      const progressDetails = card.querySelector('.file-progress-details');
+      
+      progressFill.style.width = `${Math.min(progress, 100)}%`;
+      
+      if (status === 'uploading') {
+        statusBadge.innerHTML = '<i class="ph ph-upload"></i> Enviando';
+        statusBadge.className = 'file-card-status uploading';
+        progressDetails.innerHTML = `
+          <span>${Math.round(progress)}%</span>
+          <span>${this.formatSpeed(speed)}</span>
+        `;
+      } else if (status === 'processing') {
+        statusBadge.innerHTML = '<i class="ph ph-spinner"></i> Processando';
+        statusBadge.className = 'file-card-status uploading';
+        progressDetails.innerHTML = `
+          <span>${message || 'Gerando thumbnail...'}</span>
+          <span></span>
+        `;
+      } else if (status === 'completed') {
+        statusBadge.innerHTML = '<i class="ph ph-check"></i> Concluído';
+        statusBadge.className = 'file-card-status completed';
+        progressDetails.innerHTML = `
+          <span>100%</span>
+          <span><i class="ph ph-check-circle"></i></span>
+        `;
+      } else if (status === 'error') {
+        statusBadge.innerHTML = '<i class="ph ph-x"></i> Erro';
+        statusBadge.className = 'file-card-status error';
+        progressDetails.innerHTML = `
+          <span>${message || 'Falha no upload'}</span>
+          <span></span>
+        `;
+      }
+    },
+
+    updateGlobal() {
+      if (!this.container || !this.container.classList.contains('show')) return;
+      
+      const percentage = this.totalSize > 0 
+        ? (this.uploadedSize / this.totalSize) * 100 
+        : 0;
+      
+      const elapsed = Date.now() - this.startTime;
+      const avgSpeed = elapsed > 0 ? (this.uploadedSize / (elapsed / 1000)) : 0;
+      
+      document.getElementById('globalPercentage').textContent = `${Math.round(percentage)}%`;
+      document.getElementById('globalSpeed').innerHTML = `
+        <i class="ph ph-gauge"></i> ${this.formatSpeed(avgSpeed)}
+      `;
+      document.getElementById('globalBar').style.width = `${Math.min(percentage, 100)}%`;
+      document.getElementById('fileCount').textContent = 
+        `${this.completedFiles}/${this.files.length}`;
+      document.getElementById('sizeInfo').textContent = 
+        `${this.formatSize(this.uploadedSize)}/${this.formatSize(this.totalSize)}`;
+      document.getElementById('timeInfo').textContent = this.formatTime(elapsed);
+      
+      const footerText = document.getElementById('footerText');
+      if (this.completedFiles === this.files.length && this.files.length > 0) {
+        footerText.innerHTML = '<i class="ph ph-check-circle"></i> Todos os arquivos foram enviados!';
+        this.container.classList.add('completed');
+      } else if (this.activeUploads > 0) {
+        footerText.textContent = `${this.activeUploads} ${this.activeUploads === 1 ? 'arquivo sendo enviado' : 'arquivos sendo enviados'}`;
+      } else {
+        footerText.textContent = 'Processando próximos arquivos...';
+      }
+    },
+
+    setFileUploading(index) {
+      this.activeUploads++;
+      this.updateFileCard(index, 0, 0, 'uploading');
+    },
+
+    updateFileProgress(index, loaded, total, speed) {
+      const progress = total > 0 ? (loaded / total) * 100 : 0;
+      this.updateFileCard(index, progress, speed, 'uploading');
+      
+      // Atualizar progresso global
+      this.uploadedSize = this.files
+        .slice(0, index)
+        .reduce((sum, f) => sum + (f.file?.size || f.size || 0), 0) + loaded;
+      
+      this.updateGlobal();
+    },
+
+    setFileProcessing(index, message) {
+      this.updateFileCard(index, 100, 0, 'processing', message);
+    },
+
+    setFileCompleted(index) {
+      this.updateFileCard(index, 100, 0, 'completed');
+      this.completedFiles++;
+      this.activeUploads--;
+      
+      this.uploadedSize = this.files
+        .slice(0, index + 1)
+        .reduce((sum, f) => sum + (f.file?.size || f.size || 0), 0);
+      
+      this.updateGlobal();
+    },
+
+    setFileError(index, errorMessage) {
+      this.updateFileCard(index, 0, 0, 'error', errorMessage);
+      this.activeUploads--;
+      this.updateGlobal();
+    },
+
+    formatSize(bytes) {
+      if (!bytes) return '0 B';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    },
+
+    formatSpeed(bytesPerSecond) {
+      const mbps = (bytesPerSecond * 8) / 1000000;
+      const kbps = (bytesPerSecond * 8) / 1000;
+      if (mbps >= 1) return `${mbps.toFixed(2)} Mbps`;
+      if (kbps >= 1) return `${kbps.toFixed(0)} Kbps`;
+      return `${(bytesPerSecond * 8).toFixed(0)} bps`;
+    },
+
+    formatTime(ms) {
+      if (ms < 1000) return `${ms}ms`;
+      const secs = Math.floor(ms / 1000);
+      const mins = Math.floor(secs / 60);
+      const remainingSecs = secs % 60;
+      return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
+    },
+
+    truncateFileName(fileName, maxLength = 35) {
+      if (fileName.length <= maxLength) return fileName;
+      const ext = fileName.split('.').pop();
+      const name = fileName.substring(0, fileName.lastIndexOf('.'));
+      const truncated = name.substring(0, maxLength - ext.length - 4) + '...';
+      return truncated + '.' + ext;
     }
   },
 
-  showCompletionAlert(success, message, details = null) {
-    const container = document.getElementById('progress-container');
-    const fill = document.getElementById('progress-bar-fill');
-    const percentText = document.getElementById('progress-percentage');
-    const filesText = document.getElementById('progress-files');
-    const statsText = document.getElementById('progress-stats');
-
-    if (!container) return;
-
-    if (this._clickListener) {
-      document.removeEventListener('click', this._clickListener);
-      document.removeEventListener('touchstart', this._clickListener);
-    }
-
-    container.classList.add('show');
-    container.classList.remove('completed', 'error');
-    
-    if (success) {
-      container.classList.add('completed');
-      fill.style.width = '100%';
-      percentText.innerHTML = '<i class="ph-fill ph-check-circle"></i>';
-      filesText.innerHTML = '<i class="ph ph-check-circle"></i> ' + message;
-      if (statsText) statsText.innerHTML = details || 'Toque na tela para continuar';
-    } else {
-      container.classList.add('error');
-      fill.style.width = '0%';
-      percentText.innerHTML = '<i class="ph-fill ph-x-circle"></i>';
-      filesText.innerHTML = '<i class="ph ph-x-circle"></i> ' + message;
-      if (statsText) statsText.innerHTML = details || 'Toque na tela para continuar';
-    }
-
-    this._clickListener = () => {
-      this.hideProgress();
-      document.removeEventListener('click', this._clickListener);
-      document.removeEventListener('touchstart', this._clickListener);
-      this._clickListener = null;
-    };
-
-    setTimeout(() => {
-      document.addEventListener('click', this._clickListener);
-      document.addEventListener('touchstart', this._clickListener);
-    }, 300);
+  // Manter compatibilidade com código antigo
+  showProgress(percentage, current, total, stats = null) {
+    console.warn('[Notificacao] showProgress: Use multiProgress para melhor experiência');
   },
 
-  formatSize(bytes) {
-    if (bytes < 1024) return `${bytes}B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
-  },
-
-  formatSpeed(bytesPerSecond) {
-    const mbps = (bytesPerSecond * 8) / 1000000;
-    const kbps = (bytesPerSecond * 8) / 1000;
-    if (mbps >= 1) return `${mbps.toFixed(2)} Mbps`;
-    return `${kbps.toFixed(0)} Kbps`;
-  },
-
-  formatTime(ms) {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
-    const mins = Math.floor(ms / 60000);
-    const secs = Math.floor((ms % 60000) / 1000);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  },
-
-  truncateFileName(fileName, maxLength) {
-    if (fileName.length <= maxLength) return fileName;
-    const ext = fileName.split('.').pop();
-    const name = fileName.substring(0, fileName.lastIndexOf('.'));
-    const truncated = name.substring(0, maxLength - ext.length - 4) + '...';
-    return truncated + '.' + ext;
-  },
-
-  updateProgressMessage(message) {
-    const filesText = document.getElementById('progress-files');
-    if (filesText) {
-      filesText.textContent = message;
-    }
+  showDetailedProgress(percentage, currentFile, totalFiles, stats) {
+    console.warn('[Notificacao] showDetailedProgress: Use multiProgress para melhor experiência');
   },
 
   hideProgress() {
-    const container = document.getElementById('progress-container');
-    if (container) {
-      container.classList.remove('show');
-    }
+    this.multiProgress.hide();
+  },
+
+  formatSize(bytes) {
+    return this.multiProgress.formatSize(bytes);
+  },
+
+  formatSpeed(bytesPerSecond) {
+    return this.multiProgress.formatSpeed(bytesPerSecond);
+  },
+
+  formatTime(ms) {
+    return this.multiProgress.formatTime(ms);
   }
 };
