@@ -104,13 +104,22 @@ const Drive = {
 
     document.getElementById('modal-close-preview').addEventListener('click', () => {
       document.getElementById('modal-preview').classList.remove('show');
-      document.getElementById('preview-container').innerHTML = '';
+      const container = document.getElementById('preview-container');
+      // Pausar vídeos ao fechar
+      const video = container.querySelector('video');
+      if (video) video.pause();
+      container.innerHTML = '';
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         document.getElementById('modal-new-folder').classList.remove('show');
-        document.getElementById('modal-preview').classList.remove('show');
+        const previewModal = document.getElementById('modal-preview');
+        if (previewModal.classList.contains('show')) {
+          const video = document.getElementById('preview-container').querySelector('video');
+          if (video) video.pause();
+        }
+        previewModal.classList.remove('show');
         document.getElementById('preview-container').innerHTML = '';
         this.clearSelection();
       }
@@ -329,7 +338,6 @@ const Drive = {
       if (!result.success) throw new Error(result.error);
       this.clients = result.data || [];
       
-      // Carregar armazenamento de cada cliente
       await this.loadClientsStorage();
       
       this.renderClientList();
@@ -341,7 +349,6 @@ const Drive = {
 
   async loadClientsStorage() {
     try {
-      // Buscar soma de file_size_kb agrupado por cliente
       const result = await window.driveAPI.getClientsStorageUsage();
       if (result.success && result.data) {
         this.clientsStorage = {};
@@ -361,7 +368,7 @@ const Drive = {
     return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
   },
 
-  getStoragePercentage(kb, maxKb = 5 * 1024 * 1024) { // 5GB default
+  getStoragePercentage(kb, maxKb = 5 * 1024 * 1024) {
     return Math.min((kb / maxKb) * 100, 100);
   },
 
@@ -551,13 +558,13 @@ const Drive = {
 
   renderFileItem(file) {
     const isSelected = this.selectedItems.has(`file-${file.id}`);
+    const thumbnailUrl = file.url_thumbnail || file.url_media;
+    
     return `
       <div class="file-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
         <div class="item-select-indicator"></div>
         <div class="file-thumbnail">
-          ${file.file_type === 'video' 
-            ? `<video src="${file.url_media}" preload="metadata"></video>`
-            : `<img src="${file.url_media}" alt="${file.name}" loading="lazy">`}
+          <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
           ${file.file_type === 'video' ? '<span class="file-type-badge"><i class="ph-fill ph-play"></i></span>' : ''}
         </div>
       </div>
@@ -589,45 +596,36 @@ const Drive = {
     const isSelected = this.selectedItems.has(`file-${file.id}`);
     const typeClass = file.file_type === 'video' ? 'type-video' : 'type-image';
     const typeLabel = file.file_type === 'video' ? 'Vídeo' : 'Imagem';
+    const thumbnailUrl = file.url_thumbnail || file.url_media;
     
-    // Formatar todas as informações disponíveis
     const details = [];
-    
-    // Tipo
     details.push(`<span class="file-detail-tag ${typeClass}"><i class="ph ph-${file.file_type === 'video' ? 'video-camera' : 'image'}"></i> ${typeLabel}</span>`);
     
-    // Tamanho
     if (file.file_size_kb) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-hard-drive"></i> ${this.formatFileSize(file.file_size_kb)}</span>`);
     }
     
-    // Dimensões
     if (file.dimensions) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-frame-corners"></i> ${file.dimensions}</span>`);
     }
     
-    // Duração (para vídeos)
     if (file.duration) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-timer"></i> ${this.formatDuration(file.duration)}</span>`);
     }
     
-    // MIME Type
     if (file.mime_type) {
       const mimeShort = file.mime_type.split('/')[1]?.toUpperCase() || file.mime_type;
       details.push(`<span class="file-detail-tag"><i class="ph ph-file"></i> ${mimeShort}</span>`);
     }
     
-    // Data de captura
     if (file.data_de_captura) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-camera"></i> ${this.formatDate(file.data_de_captura)}</span>`);
     }
     
-    // Data de upload
     if (file.created_at) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-cloud-arrow-up"></i> ${this.formatDate(file.created_at)}</span>`);
     }
     
-    // Data de atualização (se diferente de criação)
     if (file.updated_at && file.updated_at !== file.created_at) {
       details.push(`<span class="file-detail-tag"><i class="ph ph-pencil"></i> ${this.formatDate(file.updated_at)}</span>`);
     }
@@ -636,9 +634,8 @@ const Drive = {
       <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
         <div class="item-select-indicator"></div>
         <div class="file-list-thumbnail">
-          ${file.file_type === 'video' 
-            ? `<video src="${file.url_media}" preload="metadata"></video>`
-            : `<img src="${file.url_media}" alt="${file.name}" loading="lazy">`}
+          <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
+          ${file.file_type === 'video' ? '<span class="video-indicator"><i class="ph-fill ph-play"></i></span>' : ''}
         </div>
         <div class="file-list-info">
           <div class="file-list-name">${file.name}</div>
@@ -787,6 +784,7 @@ const Drive = {
     const container = document.getElementById('preview-container');
     const info = document.getElementById('preview-info');
 
+    // MUDANÇA PRINCIPAL: Usar url_media (mídia completa) no preview
     if (file.file_type === 'video') {
       container.innerHTML = `<video src="${file.url_media}" controls autoplay playsinline></video>`;
     } else {
@@ -868,6 +866,81 @@ const Drive = {
     });
   },
 
+  // Nova função para gerar thumbnail de vídeo
+  async generateVideoThumbnail(file) {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      video.preload = 'metadata';
+      video.muted = true;
+      
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Buscar frame em 1 segundo ou 10% do vídeo
+        video.currentTime = Math.min(1, video.duration * 0.1);
+      };
+      
+      video.onseeked = () => {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(video.src);
+          resolve(blob);
+        }, 'image/jpeg', 0.85);
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        resolve(null);
+      };
+      
+      video.src = URL.createObjectURL(file);
+    });
+  },
+
+  // Nova função para gerar thumbnail de imagem (redimensionada)
+  async generateImageThumbnail(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      img.onload = () => {
+        // Redimensionar mantendo proporção (max 400px)
+        const maxSize = 400;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height && width > maxSize) {
+          height = (height * maxSize) / width;
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = (width * maxSize) / height;
+          height = maxSize;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(img.src);
+          resolve(blob);
+        }, 'image/jpeg', 0.85);
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(img.src);
+        resolve(null);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+  },
+
   extractCaptureDate(file) {
     return file.lastModified ? new Date(file.lastModified).toISOString() : null;
   },
@@ -907,27 +980,57 @@ const Drive = {
 
         Notificacao.showProgress(((i) / files.length) * 70, i + 1, files.length);
 
+        // Extrair metadados
         let metadata = isVideo 
           ? await this.extractVideoMetadata(file) 
           : await this.extractImageMetadata(file);
         
         const captureDate = this.extractCaptureDate(file);
 
+        // Upload do arquivo principal
         const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
         if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
 
-        Notificacao.showProgress(((i + 0.3) / files.length) * 70, i + 1, files.length);
+        Notificacao.showProgress(((i + 0.2) / files.length) * 70, i + 1, files.length);
         await this.uploadToR2(file, urlResult.uploadUrl);
+
+        // Gerar e fazer upload do thumbnail
+        let thumbnailUrl = null;
+        Notificacao.showProgress(((i + 0.5) / files.length) * 70, i + 1, files.length);
+        
+        try {
+          const thumbnailBlob = isVideo 
+            ? await this.generateVideoThumbnail(file)
+            : await this.generateImageThumbnail(file);
+          
+          if (thumbnailBlob) {
+            const thumbFileName = `${folderPath}/thumb_${timestamp}-${i}.jpg`;
+            const thumbUrlResult = await window.r2API.generateUploadUrl(
+              thumbFileName, 
+              'image/jpeg', 
+              thumbnailBlob.size
+            );
+            
+            if (thumbUrlResult.success) {
+              await this.uploadToR2(thumbnailBlob, thumbUrlResult.uploadUrl);
+              thumbnailUrl = thumbUrlResult.publicUrl;
+            }
+          }
+        } catch (thumbError) {
+          console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
+          // Continua sem thumbnail se falhar
+        }
 
         Notificacao.showProgress(((i + 0.8) / files.length) * 70, i + 1, files.length);
         
+        // Salvar registro no banco
         await window.driveAPI.saveFile({
           clientId: this.selectedClient.id,
           folderId: this.currentFolder,
           path: fileName,
           name: file.name,
           urlMedia: urlResult.publicUrl,
-          urlThumbnail: null,
+          urlThumbnail: thumbnailUrl, // IMPORTANTE: Salvar URL do thumbnail
           fileType: isVideo ? 'video' : 'image',
           mimeType: file.type,
           fileSizeKb: Math.round(file.size / 1024),
@@ -943,7 +1046,6 @@ const Drive = {
         Notificacao.hideProgress();
         Notificacao.show(`${files.length} arquivo(s) enviado(s)!`, 'success');
         
-        // Atualizar armazenamento do cliente
         await this.loadClientsStorage();
         this.renderClientList();
         document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
@@ -971,7 +1073,7 @@ const Drive = {
       xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
       
       xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
       xhr.timeout = 300000;
       xhr.send(file);
     });
@@ -992,9 +1094,16 @@ const Drive = {
         if (result.deletedFiles) filesToDelete = result.deletedFiles;
       } else {
         const file = this.files.find(f => String(f.id) === String(id));
-        if (file) filesToDelete.push(file.path);
-        const result = await window.driveAPI.deleteFile(id);
-        if (!result.success) throw new Error(result.error);
+        if (file) {
+          filesToDelete.push(file.path);
+          // Adicionar thumbnail também
+          if (file.url_thumbnail) {
+            const thumbPath = file.url_thumbnail.split('.com/')[1];
+            if (thumbPath) filesToDelete.push(thumbPath);
+          }
+          const result = await window.driveAPI.deleteFile(id);
+          if (!result.success) throw new Error(result.error);
+        }
       }
 
       if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
@@ -1002,7 +1111,6 @@ const Drive = {
       Notificacao.show('Excluído!', 'success');
       this.clearSelection();
       
-      // Atualizar armazenamento
       await this.loadClientsStorage();
       this.renderClientList();
       document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
