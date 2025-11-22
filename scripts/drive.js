@@ -14,8 +14,9 @@ const Drive = {
   lastTapTime: 0,
   lastTapItem: null,
   
-  // Configurações de upload
-  MAX_CONCURRENT_UPLOADS: 3, // Uploads simultâneos
+  // Configurações de upload otimizadas
+  MAX_CONCURRENT_UPLOADS: 5,
+  THUMBNAIL_SIZE: 150,
   uploadQueue: [],
   activeUploads: 0,
   uploadStats: {
@@ -24,14 +25,24 @@ const Drive = {
     totalBytes: 0,
     uploadedBytes: 0,
     startTime: 0,
-    speeds: [] // Array para calcular velocidade média
+    speeds: []
   },
 
   async init() {
     VANTA.WAVES({
-      el: "#bg", mouseControls: true, touchControls: true, gyroControls: false,
-      minHeight: 200, minWidth: 200, scale: 1, scaleMobile: 1, color: 0x000000,
-      shininess: 25, waveHeight: 25, waveSpeed: 1.05, zoom: 1.20
+      el: "#bg", 
+      mouseControls: true, 
+      touchControls: true, 
+      gyroControls: false,
+      minHeight: 200, 
+      minWidth: 200, 
+      scale: 1, 
+      scaleMobile: 1, 
+      color: 0x000000,
+      shininess: 25, 
+      waveHeight: 25, 
+      waveSpeed: 1.05, 
+      zoom: 1.20
     });
 
     const autoLoginResult = await Auth.autoLogin();
@@ -47,6 +58,7 @@ const Drive = {
   },
 
   setupEventListeners() {
+    // Login
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('login-email').value;
@@ -62,12 +74,14 @@ const Drive = {
       }
     });
 
+    // Logout
     document.getElementById('btn-logout').addEventListener('click', async () => {
       await Auth.logout();
       Auth.showCorrectScreen();
       Notificacao.show('Logout realizado', 'info');
     });
 
+    // Modal Nova Pasta
     document.getElementById('btn-new-folder').addEventListener('click', () => {
       document.getElementById('modal-new-folder').classList.add('show');
       document.getElementById('folder-name').value = '';
@@ -88,6 +102,7 @@ const Drive = {
       if (e.key === 'Enter') this.createFolder();
     });
 
+    // Upload
     document.getElementById('btn-upload').addEventListener('click', () => {
       document.getElementById('file-input').click();
     });
@@ -99,6 +114,7 @@ const Drive = {
       }
     });
 
+    // View Controls
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const mode = e.currentTarget.dataset.view;
@@ -106,6 +122,7 @@ const Drive = {
       });
     });
 
+    // Selection Actions
     const deselectBtn = document.getElementById('btn-deselect');
     if (deselectBtn) deselectBtn.addEventListener('click', () => this.clearSelection());
     
@@ -115,6 +132,7 @@ const Drive = {
     const downloadBtn = document.getElementById('btn-download-selected');
     if (downloadBtn) downloadBtn.addEventListener('click', () => this.downloadSelected());
 
+    // Preview Modal
     document.getElementById('modal-close-preview').addEventListener('click', () => {
       document.getElementById('modal-preview').classList.remove('show');
       const container = document.getElementById('preview-container');
@@ -123,6 +141,7 @@ const Drive = {
       container.innerHTML = '';
     });
 
+    // Keyboard Events
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         document.getElementById('modal-new-folder').classList.remove('show');
@@ -137,6 +156,7 @@ const Drive = {
       }
     });
 
+    // Drag & Drop
     const driveContent = document.getElementById('drive-content');
     driveContent.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -153,6 +173,7 @@ const Drive = {
       }
     });
 
+    // Click outside selection
     driveContent.addEventListener('click', (e) => {
       if (e.target === driveContent || e.target.closest('.empty-state') || 
           e.target.closest('.section-title')) {
@@ -162,6 +183,7 @@ const Drive = {
       }
     });
 
+    // Item interactions
     document.addEventListener('click', (e) => this.handleItemClick(e));
     document.addEventListener('dblclick', (e) => this.handleItemDoubleClick(e));
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
@@ -908,13 +930,26 @@ const Drive = {
       video.muted = true;
       
       video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
         video.currentTime = Math.min(1, video.duration * 0.1);
       };
       
       video.onseeked = () => {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Configurar canvas para thumbnail quadrado 150x150
+        const thumbSize = this.THUMBNAIL_SIZE;
+        canvas.width = thumbSize;
+        canvas.height = thumbSize;
+        
+        // Calcular dimensões para corte centralizado
+        const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
+        const scaledWidth = video.videoWidth * scale;
+        const scaledHeight = video.videoHeight * scale;
+        
+        // Centralizar o vídeo no canvas
+        const x = (thumbSize - scaledWidth) / 2;
+        const y = (thumbSize - scaledHeight) / 2;
+        
+        ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
+        
         canvas.toBlob((blob) => {
           URL.revokeObjectURL(video.src);
           resolve(blob);
@@ -937,21 +972,21 @@ const Drive = {
       const ctx = canvas.getContext('2d');
       
       img.onload = () => {
-        const maxSize = 400;
-        let width = img.width;
-        let height = img.height;
+        // Configurar canvas para thumbnail quadrado 150x150
+        const thumbSize = this.THUMBNAIL_SIZE;
+        canvas.width = thumbSize;
+        canvas.height = thumbSize;
         
-        if (width > height && width > maxSize) {
-          height = (height * maxSize) / width;
-          width = maxSize;
-        } else if (height > maxSize) {
-          width = (width * maxSize) / height;
-          height = maxSize;
-        }
+        // Calcular dimensões para corte centralizado
+        const scale = Math.max(thumbSize / img.width, thumbSize / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
         
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
+        // Centralizar a imagem no canvas
+        const x = (thumbSize - scaledWidth) / 2;
+        const y = (thumbSize - scaledHeight) / 2;
+        
+        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
         
         canvas.toBlob((blob) => {
           URL.revokeObjectURL(img.src);
@@ -972,7 +1007,6 @@ const Drive = {
     return file.lastModified ? new Date(file.lastModified).toISOString() : null;
   },
 
-  // Método principal de upload otimizado com uploads simultâneos
   async uploadFiles(files) {
     if (!this.selectedClient) {
       Notificacao.show('Selecione um cliente primeiro', 'warning');
@@ -1040,7 +1074,6 @@ const Drive = {
     }
   },
 
-  // Processar fila de uploads
   async processUploadQueue() {
     while (this.uploadQueue.length > 0) {
       const task = this.uploadQueue.find(t => t.status === 'pending');
@@ -1063,7 +1096,6 @@ const Drive = {
     }
   },
 
-  // Upload de arquivo único com progresso detalhado
   async uploadSingleFile(task) {
     const { file, index, folderPath } = task;
     const isVideo = file.type.startsWith('video/');
@@ -1161,7 +1193,6 @@ const Drive = {
     Notificacao.multiProgress.setFileCompleted(index);
   },
 
-  // Upload para R2 com callback de progresso
   uploadToR2WithProgress(file, uploadUrl, onProgress = null) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -1190,11 +1221,6 @@ const Drive = {
       xhr.timeout = 300000;
       xhr.send(file);
     });
-  },
-
-  // Atualizar UI de progresso (não usado mais, mantido para compatibilidade)
-  updateProgressUI() {
-    // Removido - agora usa Notificacao.multiProgress
   },
 
   async confirmDelete(type, id) {
