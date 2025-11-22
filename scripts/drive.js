@@ -15,7 +15,7 @@ const Drive = {
   lastTapItem: null,
   
   // Configurações de upload otimizadas
-  MAX_CONCURRENT_UPLOADS: 5,
+  MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
   uploadQueue: [],
   activeUploads: 0,
@@ -1285,3 +1285,4 @@ Auth.showCorrectScreen = function() {
 };
 
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
