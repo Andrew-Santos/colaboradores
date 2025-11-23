@@ -785,7 +785,7 @@ const Drive = {
     }
   },
 
-  async downloadSelected() {
+ async downloadSelected() {
     const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
     
     if (fileItems.length === 0) {
@@ -793,15 +793,84 @@ const Drive = {
       return;
     }
 
-    Notificacao.show(`Baixando ${fileItems.length} arquivo(s)...`, 'info');
-
-    for (const item of fileItems) {
+    const files = fileItems.map(item => {
       const id = item.split('-')[1];
-      await this.downloadFile(id);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+      return this.files.find(f => String(f.id) === String(id));
+    }).filter(f => f);
 
-    Notificacao.show('Downloads concluídos!', 'success');
+    await this.downloadFilesAsZip(files);
+  },
+
+  async downloadFile(fileId) {
+    const file = this.files.find(f => String(f.id) === String(fileId));
+    if (!file) return;
+
+    await this.downloadFilesAsZip([file]);
+  },
+
+  async downloadFilesAsZip(files) {
+    if (!files || files.length === 0) return;
+
+    try {
+      Notificacao.show('Preparando download...', 'info');
+
+      const zip = new JSZip();
+      let completed = 0;
+
+      // Baixar cada arquivo e adicionar ao ZIP
+      for (const file of files) {
+        try {
+          Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
+          
+          const response = await fetch(file.url_media);
+          if (!response.ok) throw new Error(`Erro ao baixar ${file.name}`);
+          
+          const blob = await response.blob();
+          const fileName = file.name || file.path?.split('/').pop() || `arquivo_${file.id}`;
+          
+          zip.file(fileName, blob);
+          completed++;
+        } catch (error) {
+          console.error(`[Drive] Erro ao baixar ${file.name}:`, error);
+          Notificacao.show(`Erro ao baixar ${file.name}`, 'warning');
+        }
+      }
+
+      if (completed === 0) {
+        Notificacao.show('Nenhum arquivo foi baixado', 'error');
+        return;
+      }
+
+      // Gerar o ZIP
+      Notificacao.show('Gerando arquivo ZIP...', 'info');
+      const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+
+      // Criar nome do ZIP
+      const clientName = this.selectedClient?.users || 'arquivos';
+      const timestamp = new Date().toISOString().split('T')[0];
+      const zipName = files.length === 1 
+        ? `${files[0].name.split('.')[0]}.zip`
+        : `${clientName}_${timestamp}_${files.length}_arquivos.zip`;
+
+      // Download do ZIP
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = zipName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      Notificacao.show(`Download concluído! ${completed} arquivo(s)`, 'success');
+    } catch (error) {
+      console.error('[Drive] Erro ao criar ZIP:', error);
+      Notificacao.show('Erro ao criar arquivo ZIP', 'error');
+    }
   },
 
   async downloadFile(fileId) {
@@ -1285,4 +1354,5 @@ Auth.showCorrectScreen = function() {
 };
 
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
 
