@@ -21,7 +21,13 @@ const Send = {
     
     try {
       if (onProgress) {
-        onProgress(0, 0, file.size);
+        onProgress(0, 0, file.size, {
+          loaded: 0,
+          total: file.size,
+          speed: 0,
+          elapsed: '0ms',
+          eta: '0ms'
+        });
       }
 
       const urlResult = await window.r2API.generateUploadUrl(
@@ -66,7 +72,7 @@ const Send = {
               onProgress(percentComplete, e.loaded, e.total, {
                 loaded: e.loaded,
                 total: e.total,
-                speed: this.formatSpeed(avgSpeedBps),
+                speed: avgSpeedBps,
                 elapsed: this.formatTime(now - XHR_START),
                 eta: this.formatTime(etaSeconds * 1000)
               });
@@ -415,7 +421,9 @@ const Send = {
         
         // Callback de progresso do arquivo
         const fileProgressCallback = (percentage, loaded, total, stats) => {
-          Notificacao.multiProgress.updateFileProgress(i, loaded, total, stats.speed || 0);
+          // stats agora contém o valor numérico de speed em bytes/segundo
+          const speedBps = (stats && typeof stats.speed === 'number') ? stats.speed : 0;
+          Notificacao.multiProgress.updateFileProgress(i, loaded, total, speedBps);
         };
         
         const result = await this.uploadToR2(file, fileName, fileProgressCallback);
