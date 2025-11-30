@@ -782,6 +782,315 @@ app.patch('/api/drive/file/:fileId/move', verifyToken, async (req, res) => {
     });
   }
 });
+// ============ ROTAS DO DESIGNER ============
+// Adicione estas rotas no seu api/server.js, antes do health check
+
+// Listar solicitações pendentes/recusadas
+app.get('/api/designer/requests/pending', verifyToken, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('designer_request')
+      .select(`
+        *,
+        client:id_client (
+          id,
+          users,
+          profile_photo
+        )
+      `)
+      .in('status', ['PENDENTE', 'RECUSADO'])
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ 
+      success: true, 
+      data: data || []
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro ao listar pendentes:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao carregar solicitações' 
+    });
+  }
+});
+
+// Listar solicitações aprovadas (com filtro de mês)
+app.get('/api/designer/requests/approved', verifyToken, async (req, res) => {
+  try {
+    const { month, year } = req.query;
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    let query = supabase
+      .from('designer_request')
+      .select(`
+        *,
+        client:id_client (
+          id,
+          users,
+          profile_photo
+        )
+      `)
+      .eq('status', 'APROVADO')
+      .order('created_at', { ascending: false });
+
+    // Filtro por mês/ano
+    if (month && year) {
+      const startDate = new Date(year, month - 1, 1).toISOString();
+      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+      
+      query = query
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    res.json({ 
+      success: true, 
+      data: data || []
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro ao listar aprovados:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao carregar solicitações' 
+    });
+  }
+});
+
+// Buscar detalhes de uma solicitação
+app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar a solicitação
+    const { data: request, error: requestError } = await supabase
+      .from('designer_request')
+      .select(`
+        *,
+        client:id_client (
+          id,
+          users,
+          profile_photo,
+          id_instagram
+        )
+      `)
+      .eq('id', requestId)
+      .single();
+
+    if (requestError) throw requestError;
+
+    // Buscar as mídias
+    const { data: medias, error: mediasError } = await supabase
+      .from('designer_media')
+      .select('*')
+      .eq('id_request', requestId)
+      .order('created_at', { ascending: true });
+
+    if (mediasError) throw mediasError;
+
+    // Buscar as mensagens
+    const { data: messages, error: messagesError } = await supabase
+      .from('designer_mensagem')
+      .select('*')
+      .eq('id_request', requestId)
+      .order('created_at', { ascending: true });
+
+    if (messagesError) throw messagesError;
+
+    res.json({ 
+      success: true, 
+      request: request,
+      medias: medias || [],
+      messages: messages || []
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro ao buscar detalhes:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao carregar detalhes' 
+    });
+  }
+});
+
+// Upload de mídias do designer
+app.post('/api/designer/upload-media', verifyToken, async (req, res) => {
+  try {
+    const { requestId, mediaUrls } = req.body;
+
+    if (!requestId || !mediaUrls || !Array.isArray(mediaUrls)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dados inválidos' 
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Inserir mídias
+    const mediaData = mediaUrls.map(url => ({
+      id_request: requestId,
+      url_media: url,
+      atualizado_em: new Date().toISOString()
+    }));
+
+    const { data: medias, error: mediaError } = await supabase
+      .from('designer_media')
+      .insert(mediaData)
+      .select();
+
+    if (mediaError) throw mediaError;
+
+    // Atualizar status da solicitação para EM_ANDAMENTO
+    const { error: updateError } = await supabase
+      .from('designer_request')
+      .update({ status: 'EM_ANDAMENTO' })
+      .eq('id', requestId);
+
+    if (updateError) throw updateError;
+
+    res.json({ 
+      success: true, 
+      medias: medias,
+      message: 'Mídias enviadas com sucesso'
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro no upload:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao enviar mídias' 
+    });
+  }
+});
+
+// Adicionar mensagem
+app.post('/api/designer/add-message', verifyToken, async (req, res) => {
+  try {
+    const { requestId, type, content } = req.body;
+
+    if (!requestId || !type || !content) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dados incompletos' 
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    const messageData = {
+      id_request: requestId,
+      type: type, // 'text' ou 'media'
+      url_ou_text: content,
+      admin_or_users: 'users' // Designer
+    };
+
+    const { data, error } = await supabase
+      .from('designer_mensagem')
+      .insert([messageData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ 
+      success: true, 
+      message: data
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro ao adicionar mensagem:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao enviar mensagem' 
+    });
+  }
+});
+
+// Deletar mídia
+app.delete('/api/designer/media/:mediaId', verifyToken, async (req, res) => {
+  try {
+    const { mediaId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+
+    // Buscar mídia para pegar a URL
+    const { data: media, error: fetchError } = await supabase
+      .from('designer_media')
+      .select('url_media')
+      .eq('id', mediaId)
+      .single();
+
+    if (fetchError) {
+      return res.status(404).json({
+        success: false,
+        error: 'Mídia não encontrada'
+      });
+    }
+
+    // Deletar do banco
+    const { error } = await supabase
+      .from('designer_media')
+      .delete()
+      .eq('id', mediaId);
+
+    if (error) throw error;
+
+    res.json({ 
+      success: true,
+      deletedUrl: media.url_media
+    });
+
+  } catch (error) {
+    console.error('[Designer] Erro ao deletar mídia:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro ao deletar mídia' 
+    });
+  }
+});
 
 // ============ HEALTH CHECK ============
 app.get('/health', (req, res) => {
@@ -809,5 +1118,6 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`🔗 http://localhost:${PORT}\n`);
   });
 }
+
 
 module.exports = app;
