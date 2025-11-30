@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Designer - Criativa</title>
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/designer.css">
+    <link rel="shortcut icon" href="https://www.teamcriativa.com/ICONES/favicon-96x96.png" type="image/x-icon">
+    
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css"/>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="bg"></div>
+
+  <!-- TELA DE LOGIN -->
+  <div class="login-container" id="login-screen">
+    <img id="logo">
+    <form id="login-form">
+      <div class="input-group">
+        <i class="ph ph-envelope"></i>
+        <input type="email" id="login-email" placeholder="E-mail" required>
+      </div>
+      <div class="input-group">
+        <i class="ph ph-lock"></i>
+        <input type="password" id="login-password" placeholder="Senha" required>
+      </div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+  <!-- SISTEMA DESIGNER -->
+  <div id="designer-system">
+    <div class="system-header">
+      <img id="logo">
+      <h1><i class="ph ph-palette"></i> Designer</h1>
+      <div class="header-actions">
+        <a href="./index.html" class="btn-nav">
+          <i class="ph ph-calendar-plus"></i>
+          <span class="btn-text">Agendamento</span>
+        </a>
+        <a href="./drive.html" class="btn-nav">
+          <i class="ph ph-cloud"></i>
+          <span class="btn-text">Drive</span>
+        </a>
+        <button class="btn-logout" id="btn-logout">
+          <i class="ph ph-sign-out"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="designer-container">
+      <!-- Tabs -->
+      <div class="designer-tabs">
+        <button class="tab-btn active" data-tab="pending">
+          <i class="ph ph-clock"></i>
+          <span>Pendentes</span>
+          <span class="tab-badge" id="pending-count">0</span>
+        </button>
+        <button class="tab-btn" data-tab="approved">
+          <i class="ph ph-check-circle"></i>
+          <span>Aprovados</span>
+        </button>
+      </div>
+
+      <!-- Tab Pendentes -->
+      <div class="tab-content active" id="tab-pending">
+        <div class="requests-list" id="pending-list">
+          <div class="loading-state">
+            <i class="ph ph-spinner"></i>
+            <p>Carregando solicitações...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Aprovados -->
+      <div class="tab-content" id="tab-approved">
+        <div class="approved-filters">
+          <select id="month-filter" class="filter-select">
+            <option value="">Todos os meses</option>
+            <option value="1">Janeiro</option>
+            <option value="2">Fevereiro</option>
+            <option value="3">Março</option>
+            <option value="4">Abril</option>
+            <option value="5">Maio</option>
+            <option value="6">Junho</option>
+            <option value="7">Julho</option>
+            <option value="8">Agosto</option>
+            <option value="9">Setembro</option>
+            <option value="10">Outubro</option>
+            <option value="11">Novembro</option>
+            <option value="12">Dezembro</option>
+          </select>
+          <select id="year-filter" class="filter-select">
+            <option value="">Todos os anos</option>
+          </select>
+        </div>
+        <div class="requests-list" id="approved-list">
+          <div class="loading-state">
+            <i class="ph ph-spinner"></i>
+            <p>Carregando solicitações...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Detalhes da Solicitação -->
+  <div class="modal-overlay" id="modal-request-details">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3><i class="ph ph-file-text"></i> Detalhes da Solicitação</h3>
+        <button class="modal-close" id="modal-close-details">
+          <i class="ph ph-x"></i>
+        </button>
+      </div>
+      <div class="modal-body" id="request-details-body">
+        <!-- Conteúdo será inserido dinamicamente -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Upload -->
+  <div class="modal-overlay" id="modal-upload">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="ph ph-upload"></i> Enviar Mídias</h3>
+        <button class="modal-close" id="modal-close-upload">
+          <i class="ph ph-x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-area" id="upload-area">
+          <i class="ph ph-cloud-arrow-up"></i>
+          <p>Arraste arquivos ou clique para selecionar</p>
+          <input type="file" id="upload-input" multiple accept="image/*,video/*" style="display: none;">
+        </div>
+        <div class="upload-preview" id="upload-preview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel-upload">Cancelar</button>
+        <button class="btn btn-primary" id="btn-confirm-upload">
+          <i class="ph ph-check"></i> Enviar Mídias
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Preview Mídia -->
+  <div class="modal-overlay" id="modal-media-preview">
+    <div class="modal-content modal-preview-content">
+      <button class="modal-close preview-close" id="modal-close-media-preview">
+        <i class="ph ph-x"></i>
+      </button>
+      <div class="preview-media-container" id="preview-media-container"></div>
+    </div>
+  </div>
+
+  <!-- Notificação de Progresso -->
+  <div class="progress-container" id="progress-container">
+    <div class="progress-header">
+      <h4>Enviando mídias...</h4>
+      <span class="progress-percentage" id="progress-percentage">0%</span>
+    </div>
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
+    </div>
+    <div class="progress-files" id="progress-files">Arquivo 0 de 0</div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.waves.min.js"></script>
+  
+  <script src="./config.js"></script>
+  <script src="./scripts/notificacao.js"></script>
+  <script src="./auth.js"></script>
+  <script src="./scripts/designer.js"></script>
+  <script src="https://www.teamcriativa.com/SCRIPTS/logo.js"></script>
+</body>
+</html>
