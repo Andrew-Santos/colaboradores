@@ -166,7 +166,6 @@ const Send = {
 
       const fileProgressCallback = onProgress ? (percentage, loaded, total, stats) => {
         const fileProgress = uploadedSize + loaded;
-        // Progresso do upload vai de 10% a 85% (75% do total)
         const totalProgress = 10 + ((fileProgress / totalSize) * 75);
         onProgress(totalProgress, i + 1, files.length, stats);
       } : null;
@@ -181,7 +180,6 @@ const Send = {
       uploadResults.push(result);
     }
 
-    // Progresso: 85% após todos os uploads
     if (onProgress) {
       onProgress(85, files.length, files.length);
     }
@@ -261,7 +259,6 @@ const Send = {
     
     const errors = [];
 
-    // 1. Deletar post do Supabase (CASCADE vai deletar as mídias automaticamente)
     if (postId) {
       try {
         const token = localStorage.getItem('auth_token');
@@ -284,7 +281,6 @@ const Send = {
       }
     }
 
-    // 2. Deletar arquivos do R2
     if (uploadedFiles.length > 0) {
       try {
         const deleteResult = await window.r2API.deleteFiles(uploadedFiles);
@@ -360,20 +356,33 @@ const Send = {
       console.log(`✓ Agendamento: ${scheduledDate.toLocaleString('pt-BR')}`);
 
       Notificacao.show('Iniciando agendamento...', 'info');
+
+      // USAR O SISTEMA MULTI-PROGRESS
+      const postFolder = this.generatePostFolder(Renderer.selectedClient.id, Date.now());
       
-      // Progresso: 0% - Iniciando
-      Notificacao.showProgress(0, 0, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Preparando post...');
+      const filesToUpload = Renderer.mediaFiles.map((media, index) => {
+        const fileExtension = media.file.name.split('.').pop().toLowerCase();
+        const fileName = `${postFolder}/file-${index + 1}.${fileExtension}`;
+
+        return { 
+          file: media.file, 
+          fileName: fileName, 
+          originalMedia: media,
+          name: media.file.name,
+          type: media.file.type,
+          size: media.file.size
+        };
+      });
+
+      // Mostrar interface de progresso multi-arquivo
+      Notificacao.multiProgress.show(filesToUpload);
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // ========================================
-      // ETAPA 1: CRIAR POST NO SUPABASE (5%)
+      // ETAPA 1: CRIAR POST NO SUPABASE
       // ========================================
       console.log('\n📝 ETAPA 1/3: Criando post no Supabase...');
-      
-      Notificacao.showProgress(5, 0, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Criando registro do post...');
       
       const postData = {
         clientId: Renderer.selectedClient.id,
@@ -391,47 +400,41 @@ const Send = {
       postId = createdPost.postId;
       console.log(`✅ Post criado com ID: ${postId}`);
 
-      // Progresso: 10% - Post criado
-      Notificacao.showProgress(10, 0, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Post criado! Iniciando upload...');
-
       // ========================================
-      // ETAPA 2: UPLOAD DE MÍDIAS PARA R2 (10% → 85%)
+      // ETAPA 2: UPLOAD DE MÍDIAS PARA R2
       // ========================================
       console.log('\n📤 ETAPA 2/3: Upload de mídias para R2...');
       
-      const postFolder = this.generatePostFolder(Renderer.selectedClient.id, postId);
-      console.log(`📁 Pasta: ${postFolder}`);
+      const uploadResults = [];
       
-      const totalSize = Renderer.mediaFiles.reduce((acc, m) => acc + m.file.size, 0);
-      console.log(`📊 Tamanho total: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
-
-      const filesToUpload = Renderer.mediaFiles.map((media, index) => {
-        const fileExtension = media.file.name.split('.').pop().toLowerCase();
-        const fileName = `${postFolder}/file-${index + 1}.${fileExtension}`;
-
-        return { 
-          file: media.file, 
-          fileName: fileName, 
-          originalMedia: media 
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const { file, fileName } = filesToUpload[i];
+        
+        // Marcar arquivo como fazendo upload
+        Notificacao.multiProgress.setFileUploading(i);
+        
+        // Callback de progresso do arquivo
+        const fileProgressCallback = (percentage, loaded, total, stats) => {
+          Notificacao.multiProgress.updateFileProgress(i, loaded, total, stats.speed || 0);
         };
-      });
-
-      const onProgress = (percentage, current, total, stats) => {
-        Notificacao.showProgress(percentage, current, total, stats);
-      };
-
-      const uploadResults = await this.uploadMultipleFiles(filesToUpload, onProgress);
-      uploadedFiles = uploadResults.map(r => r.path);
+        
+        const result = await this.uploadToR2(file, fileName, fileProgressCallback);
+        
+        if (!result.success) {
+          throw new Error(`Falha no upload do arquivo "${file.name}"`);
+        }
+        
+        uploadResults.push(result);
+        uploadedFiles.push(result.path);
+        
+        // Marcar como concluído
+        Notificacao.multiProgress.setFileCompleted(i);
+      }
       
       console.log(`✅ Todos os arquivos no R2 verificados`);
 
-      // Progresso: 90% - Uploads completos, salvando mídias
-      Notificacao.showProgress(90, Renderer.mediaFiles.length, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Uploads completos! Vinculando mídias...');
-
       // ========================================
-      // ETAPA 3: SALVAR REFERÊNCIAS DAS MÍDIAS (90% → 95%)
+      // ETAPA 3: SALVAR REFERÊNCIAS DAS MÍDIAS
       // ========================================
       console.log('\n💾 ETAPA 3/3: Salvando referências das mídias...');
       
@@ -442,26 +445,10 @@ const Send = {
       }));
 
       await this.saveMediaToDatabase(postId, mediaUrls);
-      
-      // Progresso: 95% - Mídias salvas, verificando integridade
-      Notificacao.showProgress(95, Renderer.mediaFiles.length, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Verificando integridade final...');
-
-      // ========================================
-      // VERIFICAÇÃO FINAL (95% → 98%)
-      // ========================================
-      const finalCheck = await this.verifyAllUploads(uploadedFiles);
-
-      if (!finalCheck.success) {
-        throw new Error(`Verificação final falhou! ${finalCheck.missingFiles.length} arquivo(s) não encontrado(s) no R2`);
-      }
-
-      // Progresso: 98% - Verificação completa
-      Notificacao.showProgress(98, Renderer.mediaFiles.length, Renderer.mediaFiles.length);
-      Notificacao.updateProgressMessage('Finalizando...');
 
       const SCHEDULE_END = Date.now();
       const SCHEDULE_TIME = SCHEDULE_END - SCHEDULE_START;
+      const totalSize = filesToUpload.reduce((acc, f) => acc + f.file.size, 0);
 
       console.log('\n═══════════════════════════════════════════════════════════════');
       console.log('✅✅✅ AGENDAMENTO CONCLUÍDO COM SUCESSO ✅✅✅');
@@ -473,25 +460,16 @@ const Send = {
       console.log(`⏱️ Tempo total: ${this.formatTime(SCHEDULE_TIME)}`);
       console.log('═══════════════════════════════════════════════════════════════\n');
 
-      // Progresso: 100% - TUDO CONCLUÍDO!
-      Notificacao.showProgress(100, uploadResults.length, uploadResults.length);
-      Notificacao.updateProgressMessage(`✓ Concluído! ${uploadResults.length} mídia(s)`);
+      // Aguardar 2 segundos antes de fechar
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      await new Promise(resolve => setTimeout(resolve, 500));
+      Notificacao.multiProgress.hide();
+      Notificacao.show(`Post agendado com sucesso! ${uploadResults.length} mídia(s) enviada(s)`, 'success');
       
-      Notificacao.showCompletionAlert(
-        true, 
-        `Post agendado com sucesso!`,
-        `${uploadResults.length} mídia(s) enviada(s) • ${this.formatTime(SCHEDULE_TIME)}`
-      );
-      
-      const waitForClose = setInterval(() => {
-        const container = document.getElementById('progress-container');
-        if (!container || !container.classList.contains('show')) {
-          clearInterval(waitForClose);
-          Renderer.resetForm();
-        }
-      }, 100);
+      // Resetar formulário após fechar notificação
+      setTimeout(() => {
+        Renderer.resetForm();
+      }, 500);
 
     } catch (error) {
       const SCHEDULE_END = Date.now();
@@ -505,23 +483,17 @@ const Send = {
       console.error('═══════════════════════════════════════════════════════════════\n');
       
       console.log('🔄 Iniciando rollback completo...');
-      Notificacao.show('Erro detectado! Revertendo todas as alterações...', 'warning');
+      
+      Notificacao.multiProgress.hide();
+      Notificacao.show('Erro detectado! Revertendo alterações...', 'warning');
       
       const rollbackResult = await this.rollbackPost(postId, uploadedFiles);
       
       if (rollbackResult.success) {
-        Notificacao.showCompletionAlert(
-          false,
-          'Erro no agendamento',
-          error.message
-        );
+        Notificacao.show(`Erro: ${error.message}`, 'error');
         console.log('✅ Rollback completo: todas as alterações foram revertidas');
       } else {
-        Notificacao.showCompletionAlert(
-          false,
-          'Erro no agendamento',
-          error.message + ' (Algumas alterações podem não ter sido revertidas)'
-        );
+        Notificacao.show(`Erro: ${error.message}. Algumas alterações podem não ter sido revertidas.`, 'error');
         console.error('⚠️ Erros no rollback:', rollbackResult.errors);
       }
     }
@@ -529,5 +501,3 @@ const Send = {
 };
 
 window.Send = Send;
-
-
