@@ -91,6 +91,113 @@ window.supabaseAPI = {
     }
   }
 };
+// Adicione estas funções ao window.designerAPI no seu config.js
+
+window.designerAPI = {
+  // Listar solicitações pendentes/recusadas
+  async getPendingRequests() {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/designer/requests/pending`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Listar solicitações aprovadas
+  async getApprovedRequests(month = null, year = null) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      let url = `${CONFIG.API_URL}/api/designer/requests/approved`;
+      
+      if (month && year) {
+        url += `?month=${month}&year=${year}`;
+      }
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Buscar detalhes de uma solicitação
+  async getRequestDetails(requestId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/designer/request/${requestId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Upload de mídias
+  async uploadMedia(requestId, mediaUrls) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/designer/upload-media`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ requestId, mediaUrls })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Adicionar mensagem
+  async addMessage(requestId, type, content) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/designer/add-message`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ requestId, type, content })
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Deletar mídia
+  async deleteMedia(mediaId) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${CONFIG.API_URL}/api/designer/media/${mediaId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('[Designer API] Erro:', error);
+      return { success: false, error: error.message };
+    }
+  }
+};
 
 // ==================== DRIVE API ====================
 // ==================== DRIVE API ====================
@@ -301,5 +408,6 @@ window.r2API = {
     }
   }
 };
+
 
 window.CONFIG = CONFIG;
