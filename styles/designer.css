@@ -4,6 +4,8 @@
   display: none;
   min-height: 100vh;
   padding: 0;
+  position: relative;
+  z-index: 1;
 }
 
 #designer-system.active {
@@ -82,7 +84,7 @@
 }
 
 .tab-btn.active .tab-badge {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.3);
 }
 
 /* ==================== TAB CONTENT ==================== */
@@ -155,6 +157,13 @@
 
 .loading-state .ph-spinner {
   animation: spin 1s linear infinite;
+}
+
+.empty-state small {
+  font-size: 12px;
+  color: #dc3545;
+  margin-top: 8px;
+  display: block;
 }
 
 @keyframes spin {
@@ -319,6 +328,7 @@
 /* ==================== MODAL DETALHES ==================== */
 
 .modal-large {
+  width: 90%;
   max-width: 900px;
   max-height: 90vh;
   overflow-y: auto;
@@ -466,6 +476,7 @@
   justify-content: center;
   color: white;
   font-size: 24px;
+  pointer-events: none;
 }
 
 /* ==================== MENSAGENS ==================== */
@@ -541,6 +552,7 @@
   font-size: 48px;
   color: white;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+  pointer-events: none;
 }
 
 /* ==================== AÇÕES ==================== */
@@ -577,6 +589,7 @@
   font-size: 48px;
   color: #6b7280;
   margin-bottom: 12px;
+  display: block;
 }
 
 .upload-area p {
@@ -659,6 +672,7 @@
   justify-content: center;
   color: white;
   font-size: 20px;
+  pointer-events: none;
 }
 
 .btn-remove-upload {
@@ -677,6 +691,7 @@
   justify-content: center;
   transition: all 0.2s;
   font-size: 14px;
+  z-index: 10;
 }
 
 .btn-remove-upload:hover {
@@ -696,24 +711,115 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* ==================== PREVIEW MÍDIA ==================== */
+
+.modal-preview-content {
+  background: rgba(0, 0, 0, 0.95);
+  width: 95vw;
+  height: 95vh;
+  max-width: none;
+  max-height: none;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+}
+
+.preview-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
 
 .preview-media-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-width: 95vw;
-  max-height: 90vh;
+  width: 100%;
+  height: 100%;
 }
 
 .preview-media-container img,
 .preview-media-container video {
   max-width: 100%;
-  max-height: 90vh;
+  max-height: 100%;
   border-radius: 12px;
   object-fit: contain;
+}
+
+/* ==================== PROGRESS CONTAINER ==================== */
+
+.progress-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: white;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  min-width: 320px;
+  z-index: 10000;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  pointer-events: none;
+}
+
+.progress-container.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.progress-header h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pt100);
+  margin: 0;
+}
+
+.progress-percentage {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pt100);
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--pt100), var(--pt75));
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.progress-files {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 600;
 }
 
 /* ==================== RESPONSIVE ==================== */
@@ -749,7 +855,7 @@
   }
 
   .modal-large {
-    max-width: 100%;
+    width: 95%;
     max-height: 95vh;
   }
 
@@ -769,6 +875,24 @@
   .upload-preview-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
+
+  .progress-container {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+  }
+
+  .modal-preview-content {
+    width: 100vw;
+    height: 100vh;
+    padding: 10px;
+  }
+
+  .preview-close {
+    top: 10px;
+    right: 10px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -779,6 +903,7 @@
   .request-status {
     width: 100%;
     text-align: center;
+    margin-top: 8px;
   }
 
   .request-meta {
@@ -793,4 +918,33 @@
   .upload-area i {
     font-size: 40px;
   }
+
+  .client-details {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .details-actions {
+    flex-direction: column;
+  }
+}
+
+/* ==================== SCROLLBAR CUSTOMIZADO ==================== */
+
+.modal-large::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-large::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.modal-large::-webkit-scrollbar-thumb {
+  background: var(--pt100);
+  border-radius: 10px;
+}
+
+.modal-large::-webkit-scrollbar-thumb:hover {
+  background: var(--pt75);
 }
