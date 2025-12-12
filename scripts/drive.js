@@ -17,6 +17,7 @@ const Drive = {
   // Configurações de upload otimizadas
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
+  MAX_FILE_SIZE: 2 * 1024 * 1024 * 1024, // 2GB
   uploadQueue: [],
   activeUploads: 0,
   uploadStats: {
@@ -457,7 +458,13 @@ const Drive = {
 
     document.getElementById('drive-toolbar').style.display = 'flex';
     await this.loadFolderContents();
-  },
+  }
+};
+
+// ============================================
+// CONTINUAÇÃO DO OBJETO Drive
+// Cole este código após a Parte 1
+// ============================================
 
   async loadFolderContents() {
     try {
@@ -682,7 +689,8 @@ const Drive = {
   formatFileSize(kb) {
     if (!kb) return '';
     if (kb < 1024) return `${Math.round(kb)} KB`;
-    return `${(kb / 1024).toFixed(1)} MB`;
+    if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
+    return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
   },
 
   formatDuration(seconds) {
@@ -785,7 +793,7 @@ const Drive = {
     }
   },
 
- async downloadSelected() {
+  async downloadSelected() {
     const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
     
     if (fileItems.length === 0) {
@@ -801,13 +809,6 @@ const Drive = {
     await this.downloadFilesAsZip(files);
   },
 
-  async downloadFile(fileId) {
-    const file = this.files.find(f => String(f.id) === String(fileId));
-    if (!file) return;
-
-    await this.downloadFilesAsZip([file]);
-  },
-
   async downloadFilesAsZip(files) {
     if (!files || files.length === 0) return;
 
@@ -817,7 +818,6 @@ const Drive = {
       const zip = new JSZip();
       let completed = 0;
 
-      // Baixar cada arquivo e adicionar ao ZIP
       for (const file of files) {
         try {
           Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
@@ -841,7 +841,6 @@ const Drive = {
         return;
       }
 
-      // Gerar o ZIP
       Notificacao.show('Gerando arquivo ZIP...', 'info');
       const zipBlob = await zip.generateAsync({ 
         type: 'blob',
@@ -849,14 +848,12 @@ const Drive = {
         compressionOptions: { level: 6 }
       });
 
-      // Criar nome do ZIP
       const clientName = this.selectedClient?.users || 'arquivos';
       const timestamp = new Date().toISOString().split('T')[0];
       const zipName = files.length === 1 
         ? `${files[0].name.split('.')[0]}.zip`
         : `${clientName}_${timestamp}_${files.length}_arquivos.zip`;
 
-      // Download do ZIP
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -877,19 +874,7 @@ const Drive = {
     const file = this.files.find(f => String(f.id) === String(fileId));
     if (!file) return;
 
-    try {
-      const fileName = file.path ? file.path.split('/').pop() : file.name;
-      const a = document.createElement('a');
-      a.href = file.url_media;
-      a.download = fileName;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('[Drive] Erro ao baixar:', error);
-      Notificacao.show('Erro ao baixar: ' + file.name, 'error');
-    }
+    await this.downloadFilesAsZip([file]);
   },
 
   async navigateToFolder(folderId) {
@@ -952,7 +937,12 @@ const Drive = {
       console.error('[Drive] Erro:', error);
       Notificacao.show('Erro: ' + error.message, 'error');
     }
-  },
+  }
+
+// ============================================
+// CONTINUAÇÃO FINAL DO OBJETO Drive
+// Cole este código após a Parte 2
+// ============================================
 
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
@@ -1003,17 +993,14 @@ const Drive = {
       };
       
       video.onseeked = () => {
-        // Configurar canvas para thumbnail quadrado 150x150
         const thumbSize = this.THUMBNAIL_SIZE;
         canvas.width = thumbSize;
         canvas.height = thumbSize;
         
-        // Calcular dimensões para corte centralizado
         const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
         const scaledWidth = video.videoWidth * scale;
         const scaledHeight = video.videoHeight * scale;
         
-        // Centralizar o vídeo no canvas
         const x = (thumbSize - scaledWidth) / 2;
         const y = (thumbSize - scaledHeight) / 2;
         
@@ -1041,17 +1028,14 @@ const Drive = {
       const ctx = canvas.getContext('2d');
       
       img.onload = () => {
-        // Configurar canvas para thumbnail quadrado 150x150
         const thumbSize = this.THUMBNAIL_SIZE;
         canvas.width = thumbSize;
         canvas.height = thumbSize;
         
-        // Calcular dimensões para corte centralizado
         const scale = Math.max(thumbSize / img.width, thumbSize / img.height);
         const scaledWidth = img.width * scale;
         const scaledHeight = img.height * scale;
         
-        // Centralizar a imagem no canvas
         const x = (thumbSize - scaledWidth) / 2;
         const y = (thumbSize - scaledHeight) / 2;
         
@@ -1082,17 +1066,37 @@ const Drive = {
       return;
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'];
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 
+      'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'
+    ];
     
+    // Validar todos os arquivos primeiro
     for (const file of files) {
       if (!allowedTypes.includes(file.type)) {
         Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
         return;
       }
-      if (file.size > 500 * 1024 * 1024) {
-        Notificacao.show(`Arquivo muito grande (max 500MB): ${file.name}`, 'warning');
+      
+      if (file.size > this.MAX_FILE_SIZE) {
+        const sizeMB = Math.round(file.size / (1024 * 1024));
+        const maxMB = Math.round(this.MAX_FILE_SIZE / (1024 * 1024));
+        Notificacao.show(
+          `Arquivo muito grande: ${file.name} (${sizeMB}MB). Máximo: ${maxMB}MB`, 
+          'warning'
+        );
         return;
       }
+    }
+
+    // Avisar sobre arquivos grandes (>500MB)
+    const largeFiles = files.filter(f => f.size > 500 * 1024 * 1024);
+    if (largeFiles.length > 0) {
+      const totalSizeGB = largeFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024 * 1024);
+      Notificacao.show(
+        `Enviando ${largeFiles.length} arquivo(s) grande(s) (${totalSizeGB.toFixed(2)}GB). Isso pode demorar...`,
+        'info'
+      );
     }
 
     try {
@@ -1283,11 +1287,16 @@ const Drive = {
       });
 
       xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
-      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
+      xhr.addEventListener('timeout', () => reject(new Error('Timeout no upload')));
 
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.timeout = 300000;
+      
+      // ⭐ TIMEOUT DINÂMICO BASEADO NO TAMANHO DO ARQUIVO
+      const fileSizeMB = file.size / (1024 * 1024);
+      const timeoutPerMB = 1000; // 1 segundo por MB
+      xhr.timeout = Math.max(300000, fileSizeMB * timeoutPerMB); // Mínimo 5min
+      
       xhr.send(file);
     });
   },
@@ -1335,7 +1344,10 @@ const Drive = {
   }
 };
 
-// Sobrescrever showCorrectScreen do Auth
+// ============================================
+// SOBRESCREVER AUTH PARA DRIVE
+// ============================================
+
 Auth.showCorrectScreen = function() {
   const loginScreen = document.getElementById('login-screen');
   const driveSystem = document.getElementById('drive-system');
@@ -1353,6 +1365,8 @@ Auth.showCorrectScreen = function() {
   }
 };
 
+// ============================================
+// INICIALIZAR QUANDO DOM CARREGAR
+// ============================================
+
 document.addEventListener('DOMContentLoaded', () => Drive.init());
-
-
