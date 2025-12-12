@@ -1090,7 +1090,7 @@ const Drive = {
     }
 
     // Avisar sobre arquivos grandes (>500MB)
-    const largeFiles = files.filter(f => f.size > 500 * 1024 * 1024);
+    const largeFiles = files.filter(f => f.size > 5000 * 1024 * 1024);
     if (largeFiles.length > 0) {
       const totalSizeGB = largeFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024 * 1024);
       Notificacao.show(
@@ -1370,3 +1370,4 @@ Auth.showCorrectScreen = function() {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
