@@ -1,3 +1,8 @@
+// ============================================
+// DRIVE.JS - PARTE 1 DE 5
+// Cole este código no início do arquivo scripts/drive.js
+// ============================================
+
 const Drive = {
   clients: [],
   clientsStorage: {},
@@ -14,9 +19,11 @@ const Drive = {
   lastTapTime: 0,
   lastTapItem: null,
   
-  // Configurações de upload otimizadas
+  // Configurações
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
+  MAX_FILE_SIZE: 2 * 1024 * 1024 * 1024, // 2GB
+  LARGE_FILE_WARNING: 500 * 1024 * 1024, // 500MB
   uploadQueue: [],
   activeUploads: 0,
   uploadStats: {
@@ -29,85 +36,127 @@ const Drive = {
   },
 
   async init() {
-    VANTA.WAVES({
-      el: "#bg", 
-      mouseControls: true, 
-      touchControls: true, 
-      gyroControls: false,
-      minHeight: 200, 
-      minWidth: 200, 
-      scale: 1, 
-      scaleMobile: 1, 
-      color: 0x000000,
-      shininess: 25, 
-      waveHeight: 25, 
-      waveSpeed: 1.05, 
-      zoom: 1.20
-    });
+    console.log('[Drive] Iniciando sistema...');
+    
+    // Background animado
+    if (typeof VANTA !== 'undefined') {
+      try {
+        VANTA.WAVES({
+          el: "#bg",
+          mouseControls: true,
+          touchControls: true,
+          gyroControls: false,
+          minHeight: 200,
+          minWidth: 200,
+          scale: 1,
+          scaleMobile: 1,
+          color: 0x000000,
+          shininess: 25,
+          waveHeight: 25,
+          waveSpeed: 1.05,
+          zoom: 1.20
+        });
+        console.log('[Drive] Background VANTA inicializado');
+      } catch (error) {
+        console.error('[Drive] Erro ao inicializar VANTA:', error);
+      }
+    }
 
+    // Configurar event listeners ANTES do auto-login
+    this.setupEventListeners();
+    console.log('[Drive] Event listeners configurados');
+
+    // Tentar auto-login
+    console.log('[Drive] Tentando auto-login...');
     const autoLoginResult = await Auth.autoLogin();
+    
     if (autoLoginResult.success) {
+      console.log('[Drive] Auto-login bem-sucedido');
       Auth.showCorrectScreen();
       await this.loadClients();
       Notificacao.show('Bem-vindo ao Drive Criativa!', 'success');
     } else {
+      console.log('[Drive] Auto-login falhou:', autoLoginResult.error);
       Auth.showCorrectScreen();
     }
-
-    this.setupEventListeners();
   },
 
   setupEventListeners() {
-    // Login
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
-      Notificacao.show('Fazendo login...', 'info');
-      const result = await Auth.login(email, password);
-      if (result.success) {
-        Auth.showCorrectScreen();
-        await this.loadClients();
-        Notificacao.show('Login realizado!', 'success');
-      } else {
-        Notificacao.show(result.error || 'Login falhou', 'error');
-      }
-    });
+    console.log('[Drive] Configurando event listeners...');
+    
+    // Login Form
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+      const newForm = loginForm.cloneNode(true);
+      loginForm.parentNode.replaceChild(newForm, loginForm);
+      
+      newForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log('[Drive] Submit do login detectado');
+        
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        
+        console.log('[Drive] Tentando login com:', email);
+        Notificacao.show('Fazendo login...', 'info');
+        
+        const result = await Auth.login(email, password);
+        console.log('[Drive] Resultado do login:', result);
+        
+        if (result.success) {
+          console.log('[Drive] Login bem-sucedido!');
+          Auth.showCorrectScreen();
+          await this.loadClients();
+          Notificacao.show('Login realizado!', 'success');
+        } else {
+          console.error('[Drive] Login falhou:', result.error);
+          Notificacao.show(result.error || 'Login falhou', 'error');
+        }
+      });
+      console.log('[Drive] Listener de login configurado');
+    } else {
+      console.error('[Drive] Formulário de login não encontrado!');
+    }
 
     // Logout
-    document.getElementById('btn-logout').addEventListener('click', async () => {
-      await Auth.logout();
-      Auth.showCorrectScreen();
-      Notificacao.show('Logout realizado', 'info');
-    });
+    const btnLogout = document.getElementById('btn-logout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', async () => {
+        console.log('[Drive] Logout solicitado');
+        await Auth.logout();
+        Auth.showCorrectScreen();
+        Notificacao.show('Logout realizado', 'info');
+      });
+      console.log('[Drive] Listener de logout configurado');
+    }
 
     // Modal Nova Pasta
-    document.getElementById('btn-new-folder').addEventListener('click', () => {
+    document.getElementById('btn-new-folder')?.addEventListener('click', () => {
       document.getElementById('modal-new-folder').classList.add('show');
       document.getElementById('folder-name').value = '';
       document.getElementById('folder-name').focus();
     });
 
-    document.getElementById('modal-close-folder').addEventListener('click', () => {
+    document.getElementById('modal-close-folder')?.addEventListener('click', () => {
       document.getElementById('modal-new-folder').classList.remove('show');
     });
 
-    document.getElementById('btn-cancel-folder').addEventListener('click', () => {
+    document.getElementById('btn-cancel-folder')?.addEventListener('click', () => {
       document.getElementById('modal-new-folder').classList.remove('show');
     });
 
-    document.getElementById('btn-create-folder').addEventListener('click', () => this.createFolder());
+    document.getElementById('btn-create-folder')?.addEventListener('click', () => this.createFolder());
     
-    document.getElementById('folder-name').addEventListener('keypress', (e) => {
+    document.getElementById('folder-name')?.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') this.createFolder();
     });
 
     // Upload
-    document.getElementById('btn-upload').addEventListener('click', () => {
+    document.getElementById('btn-upload')?.addEventListener('click', () => {
       document.getElementById('file-input').click();
     });
 
-    document.getElementById('file-input').addEventListener('change', (e) => {
+    document.getElementById('file-input')?.addEventListener('change', (e) => {
       if (e.target.files.length > 0) {
         this.uploadFiles(Array.from(e.target.files));
         e.target.value = '';
@@ -123,17 +172,12 @@ const Drive = {
     });
 
     // Selection Actions
-    const deselectBtn = document.getElementById('btn-deselect');
-    if (deselectBtn) deselectBtn.addEventListener('click', () => this.clearSelection());
-    
-    const deleteBtn = document.getElementById('btn-delete-selected');
-    if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteSelected());
-    
-    const downloadBtn = document.getElementById('btn-download-selected');
-    if (downloadBtn) downloadBtn.addEventListener('click', () => this.downloadSelected());
+    document.getElementById('btn-deselect')?.addEventListener('click', () => this.clearSelection());
+    document.getElementById('btn-delete-selected')?.addEventListener('click', () => this.deleteSelected());
+    document.getElementById('btn-download-selected')?.addEventListener('click', () => this.downloadSelected());
 
     // Preview Modal
-    document.getElementById('modal-close-preview').addEventListener('click', () => {
+    document.getElementById('modal-close-preview')?.addEventListener('click', () => {
       document.getElementById('modal-preview').classList.remove('show');
       const container = document.getElementById('preview-container');
       const video = container.querySelector('video');
@@ -164,7 +208,9 @@ const Drive = {
         driveContent.classList.add('dragover');
       }
     });
+    
     driveContent.addEventListener('dragleave', () => driveContent.classList.remove('dragover'));
+    
     driveContent.addEventListener('drop', (e) => {
       e.preventDefault();
       driveContent.classList.remove('dragover');
@@ -173,7 +219,6 @@ const Drive = {
       }
     });
 
-    // Click outside selection
     driveContent.addEventListener('click', (e) => {
       if (e.target === driveContent || e.target.closest('.empty-state') || 
           e.target.closest('.section-title')) {
@@ -188,6 +233,8 @@ const Drive = {
     document.addEventListener('dblclick', (e) => this.handleItemDoubleClick(e));
     document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
     this.setupLongPress();
+    
+    console.log('[Drive] Todos os event listeners configurados');
   },
 
   setupLongPress() {
@@ -289,904 +336,918 @@ const Drive = {
         }, 200);
       });
     });
-  },
+  }
+};
 
-  handleTouchEnd(e) {
-    const item = e.target.closest('.folder-item, .file-item, .file-list-item');
-    if (!item) return;
+// FIM DA PARTE 1
+// Continue com a Parte 2
+// ============================================
+// DRIVE.JS - PARTE 2 DE 5
+// Cole este código APÓS a Parte 1
+// ============================================
 
-    const now = Date.now();
-    const id = item.dataset.id;
+// Continuação do objeto Drive...
 
-    if (this.lastTapItem === id && (now - this.lastTapTime) < 300) {
-      e.preventDefault();
-      this.handleItemDoubleClick(e, item);
-      this.lastTapTime = 0;
-      this.lastTapItem = null;
-    } else {
-      this.lastTapTime = now;
-      this.lastTapItem = id;
-    }
-  },
+Drive.handleTouchEnd = function(e) {
+  const item = e.target.closest('.folder-item, .file-item, .file-list-item');
+  if (!item) return;
 
-  getItemType(element) {
-    if (element.classList.contains('folder-item')) return 'folder';
-    if (element.classList.contains('file-item')) return 'file';
-    if (element.classList.contains('file-list-item')) {
-      return element.querySelector('.ph-folder') ? 'folder' : 'file';
-    }
-    return null;
-  },
+  const now = Date.now();
+  const id = item.dataset.id;
 
-  handleItemClick(e) {
-    const item = e.target.closest('.folder-item, .file-item, .file-list-item');
-    if (!item) return;
+  if (this.lastTapItem === id && (now - this.lastTapTime) < 300) {
+    e.preventDefault();
+    this.handleItemDoubleClick(e, item);
+    this.lastTapTime = 0;
+    this.lastTapItem = null;
+  } else {
+    this.lastTapTime = now;
+    this.lastTapItem = id;
+  }
+};
 
-    const type = this.getItemType(item);
-    const id = item.dataset.id;
-    const key = `${type}-${id}`;
+Drive.getItemType = function(element) {
+  if (element.classList.contains('folder-item')) return 'folder';
+  if (element.classList.contains('file-item')) return 'file';
+  if (element.classList.contains('file-list-item')) {
+    return element.querySelector('.ph-folder') ? 'folder' : 'file';
+  }
+  return null;
+};
 
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      this.selectedItems.has(key) ? this.selectedItems.delete(key) : this.selectedItems.add(key);
-      this.lastSelectedItem = key;
-    } else if (e.shiftKey && this.lastSelectedItem) {
-      e.preventDefault();
-      this.selectRange(this.lastSelectedItem, key);
-    } else {
-      this.selectedItems.clear();
-      this.selectedItems.add(key);
-      this.lastSelectedItem = key;
-    }
+Drive.handleItemClick = function(e) {
+  const item = e.target.closest('.folder-item, .file-item, .file-list-item');
+  if (!item) return;
 
-    this.updateSelectionUI();
-  },
+  const type = this.getItemType(item);
+  const id = item.dataset.id;
+  const key = `${type}-${id}`;
 
-  handleItemDoubleClick(e, touchItem = null) {
-    const item = touchItem || e.target.closest('.folder-item, .file-item, .file-list-item');
-    if (!item) return;
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    this.selectedItems.has(key) ? this.selectedItems.delete(key) : this.selectedItems.add(key);
+    this.lastSelectedItem = key;
+  } else if (e.shiftKey && this.lastSelectedItem) {
+    e.preventDefault();
+    this.selectRange(this.lastSelectedItem, key);
+  } else {
+    this.selectedItems.clear();
+    this.selectedItems.add(key);
+    this.lastSelectedItem = key;
+  }
 
-    const type = this.getItemType(item);
-    const id = item.dataset.id;
+  this.updateSelectionUI();
+};
 
-    type === 'folder' ? this.navigateToFolder(id) : this.previewFile(id);
-  },
+Drive.handleItemDoubleClick = function(e, touchItem = null) {
+  const item = touchItem || e.target.closest('.folder-item, .file-item, .file-list-item');
+  if (!item) return;
 
-  selectRange(startKey, endKey) {
-    const allItems = [
-      ...this.folders.map(f => `folder-${f.id}`),
-      ...this.files.map(f => `file-${f.id}`)
-    ];
+  const type = this.getItemType(item);
+  const id = item.dataset.id;
 
-    const startIndex = allItems.indexOf(startKey);
-    const endIndex = allItems.indexOf(endKey);
-    if (startIndex === -1 || endIndex === -1) return;
+  type === 'folder' ? this.navigateToFolder(id) : this.previewFile(id);
+};
 
-    const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-    for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
-  },
+Drive.selectRange = function(startKey, endKey) {
+  const allItems = [
+    ...this.folders.map(f => `folder-${f.id}`),
+    ...this.files.map(f => `file-${f.id}`)
+  ];
 
-  async loadClients() {
-    try {
-      const result = await window.supabaseAPI.getClients();
-      if (!result.success) throw new Error(result.error);
-      this.clients = result.data || [];
-      
-      await this.loadClientsStorage();
-      
-      this.renderClientList();
-    } catch (error) {
-      console.error('[Drive] Erro ao carregar clientes:', error);
-      Notificacao.show('Erro ao carregar clientes', 'error');
-    }
-  },
+  const startIndex = allItems.indexOf(startKey);
+  const endIndex = allItems.indexOf(endKey);
+  if (startIndex === -1 || endIndex === -1) return;
 
-  async loadClientsStorage() {
-    try {
-      const result = await window.driveAPI.getClientsStorageUsage();
-      if (result.success && result.data) {
-        this.clientsStorage = {};
-        result.data.forEach(item => {
-          this.clientsStorage[item.id_client] = item.total_size_kb || 0;
-        });
-      }
-    } catch (error) {
-      console.error('[Drive] Erro ao carregar armazenamento:', error);
-    }
-  },
+  const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+  for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
+};
 
-  formatStorageSize(kb) {
-    if (!kb || kb === 0) return '0 KB';
-    if (kb < 1024) return `${Math.round(kb)} KB`;
-    if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
-    return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
-  },
-
-  getStoragePercentage(kb, maxKb = 5 * 1024 * 1024) {
-    return Math.min((kb / maxKb) * 100, 100);
-  },
-
-  getStorageClass(percentage) {
-    if (percentage >= 90) return 'danger';
-    if (percentage >= 70) return 'warning';
-    return '';
-  },
-
-  renderClientList() {
-    const container = document.getElementById('client-list');
-    if (this.clients.length === 0) {
-      container.innerHTML = '<div class="loading-clients">Nenhum cliente</div>';
-      return;
-    }
+Drive.loadClients = async function() {
+  try {
+    const result = await window.supabaseAPI.getClients();
+    if (!result.success) throw new Error(result.error);
+    this.clients = result.data || [];
     
-    container.innerHTML = this.clients.map(c => {
-      const storageKb = this.clientsStorage[c.id] || 0;
-      const storageText = this.formatStorageSize(storageKb);
-      const percentage = this.getStoragePercentage(storageKb);
-      const storageClass = this.getStorageClass(percentage);
-      
-      return `
-        <div class="client-item" data-id="${c.id}">
-          <img src="${c.profile_photo || 'https://via.placeholder.com/40'}" class="client-item-avatar" alt="${c.users}">
-          <div class="client-item-info">
-            <div class="client-item-name">@${c.users}</div>
-            <div class="client-item-storage">
-              <span>${storageText}</span>
-              <div class="storage-bar">
-                <div class="storage-bar-fill ${storageClass}" style="width: ${percentage}%"></div>
-              </div>
+    await this.loadClientsStorage();
+    
+    this.renderClientList();
+  } catch (error) {
+    console.error('[Drive] Erro ao carregar clientes:', error);
+    Notificacao.show('Erro ao carregar clientes', 'error');
+  }
+};
+
+Drive.loadClientsStorage = async function() {
+  try {
+    const result = await window.driveAPI.getClientsStorageUsage();
+    if (result.success && result.data) {
+      this.clientsStorage = {};
+      result.data.forEach(item => {
+        this.clientsStorage[item.id_client] = item.total_size_kb || 0;
+      });
+    }
+  } catch (error) {
+    console.error('[Drive] Erro ao carregar armazenamento:', error);
+  }
+};
+
+Drive.formatStorageSize = function(kb) {
+  if (!kb || kb === 0) return '0 KB';
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
+};
+
+Drive.getStoragePercentage = function(kb, maxKb = 5 * 1024 * 1024) {
+  return Math.min((kb / maxKb) * 100, 100);
+};
+
+Drive.getStorageClass = function(percentage) {
+  if (percentage >= 90) return 'danger';
+  if (percentage >= 70) return 'warning';
+  return '';
+};
+
+Drive.renderClientList = function() {
+  const container = document.getElementById('client-list');
+  if (this.clients.length === 0) {
+    container.innerHTML = '<div class="loading-clients">Nenhum cliente</div>';
+    return;
+  }
+  
+  container.innerHTML = this.clients.map(c => {
+    const storageKb = this.clientsStorage[c.id] || 0;
+    const storageText = this.formatStorageSize(storageKb);
+    const percentage = this.getStoragePercentage(storageKb);
+    const storageClass = this.getStorageClass(percentage);
+    
+    return `
+      <div class="client-item" data-id="${c.id}">
+        <img src="${c.profile_photo || 'https://via.placeholder.com/40'}" class="client-item-avatar" alt="${c.users}">
+        <div class="client-item-info">
+          <div class="client-item-name">@${c.users}</div>
+          <div class="client-item-storage">
+            <span>${storageText}</span>
+            <div class="storage-bar">
+              <div class="storage-bar-fill ${storageClass}" style="width: ${percentage}%"></div>
             </div>
           </div>
         </div>
-      `;
-    }).join('');
+      </div>
+    `;
+  }).join('');
 
-    container.querySelectorAll('.client-item').forEach(el => {
-      el.addEventListener('click', () => this.selectClient(el.dataset.id));
-    });
-  },
+  container.querySelectorAll('.client-item').forEach(el => {
+    el.addEventListener('click', () => this.selectClient(el.dataset.id));
+  });
+};
 
-  async selectClient(clientId) {
-    document.querySelectorAll('.client-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`.client-item[data-id="${clientId}"]`)?.classList.add('active');
+Drive.selectClient = async function(clientId) {
+  document.querySelectorAll('.client-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.client-item[data-id="${clientId}"]`)?.classList.add('active');
 
-    this.selectedClient = this.clients.find(c => String(c.id) === String(clientId));
-    this.currentFolder = null;
-    this.breadcrumbPath = [{ id: null, name: `@${this.selectedClient.users}` }];
-    this.clearSelection();
+  this.selectedClient = this.clients.find(c => String(c.id) === String(clientId));
+  this.currentFolder = null;
+  this.breadcrumbPath = [{ id: null, name: `@${this.selectedClient.users}` }];
+  this.clearSelection();
 
-    document.getElementById('drive-toolbar').style.display = 'flex';
-    await this.loadFolderContents();
-  },
+  document.getElementById('drive-toolbar').style.display = 'flex';
+  await this.loadFolderContents();
+};
 
-  async loadFolderContents() {
-    try {
-      const content = document.getElementById('drive-content');
-      content.innerHTML = '<div class="empty-state"><i class="ph ph-spinner"></i><p>Carregando...</p></div>';
-
-      const result = await window.driveAPI.getFolderContents(this.selectedClient.id, this.currentFolder);
-      if (!result.success) throw new Error(result.error);
-
-      this.folders = result.folders || [];
-      this.files = result.files || [];
-      
-      this.clearSelection();
-      this.renderBreadcrumb();
-      this.sortAndRenderContents();
-    } catch (error) {
-      console.error('[Drive] Erro:', error);
-      Notificacao.show('Erro ao carregar conteúdo', 'error');
-      document.getElementById('drive-content').innerHTML = `
-        <div class="empty-state"><i class="ph ph-warning"></i><p>Erro ao carregar</p></div>
-      `;
-    }
-  },
-
-  renderBreadcrumb() {
-    const container = document.getElementById('breadcrumb');
-    container.innerHTML = this.breadcrumbPath.map((item, index) => {
-      const isLast = index === this.breadcrumbPath.length - 1;
-      return `
-        ${index > 0 ? '<span class="breadcrumb-separator"><i class="ph ph-caret-right"></i></span>' : ''}
-        <span class="breadcrumb-item ${isLast ? 'active' : ''}" data-id="${item.id}" data-index="${index}">
-          ${index === 0 ? '<i class="ph ph-house"></i>' : ''} ${item.name}
-        </span>
-      `;
-    }).join('');
-
-    container.querySelectorAll('.breadcrumb-item:not(.active)').forEach(el => {
-      el.addEventListener('click', () => {
-        const index = parseInt(el.dataset.index);
-        this.breadcrumbPath = this.breadcrumbPath.slice(0, index + 1);
-        this.currentFolder = this.breadcrumbPath[index].id;
-        this.loadFolderContents();
-      });
-    });
-  },
-
-  changeViewMode(mode) {
-    this.viewMode = mode;
-    document.querySelectorAll('.view-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.view === mode);
-    });
-    document.getElementById('drive-content').className = `drive-content view-${mode}`;
-    this.sortAndRenderContents();
-  },
-
-  sortAndRenderContents() {
-    this.files.sort((a, b) => {
-      let cmp = 0;
-      switch (this.sortBy) {
-        case 'name': cmp = (a.name || '').localeCompare(b.name || ''); break;
-        case 'size': cmp = (a.file_size_kb || 0) - (b.file_size_kb || 0); break;
-        case 'type': cmp = (a.file_type || '').localeCompare(b.file_type || ''); break;
-        case 'date': cmp = new Date(a.created_at || 0) - new Date(b.created_at || 0); break;
-      }
-      return this.sortOrder === 'asc' ? cmp : -cmp;
-    });
-    this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    this.renderContents();
-  },
-
-  renderContents() {
+Drive.loadFolderContents = async function() {
+  try {
     const content = document.getElementById('drive-content');
+    content.innerHTML = '<div class="empty-state"><i class="ph ph-spinner"></i><p>Carregando...</p></div>';
+
+    const result = await window.driveAPI.getFolderContents(this.selectedClient.id, this.currentFolder);
+    if (!result.success) throw new Error(result.error);
+
+    this.folders = result.folders || [];
+    this.files = result.files || [];
     
-    if (this.folders.length === 0 && this.files.length === 0) {
-      content.innerHTML = `
-        <div class="empty-state">
-          <i class="ph ph-folder-open"></i>
-          <p>Pasta vazia</p>
-          <span class="empty-hint">Arraste arquivos ou use o botão Upload</span>
-        </div>
-      `;
+    this.clearSelection();
+    this.renderBreadcrumb();
+    this.sortAndRenderContents();
+  } catch (error) {
+    console.error('[Drive] Erro:', error);
+    Notificacao.show('Erro ao carregar conteúdo', 'error');
+    document.getElementById('drive-content').innerHTML = `
+      <div class="empty-state"><i class="ph ph-warning"></i><p>Erro ao carregar</p></div>
+    `;
+  }
+};
+
+Drive.renderBreadcrumb = function() {
+  const container = document.getElementById('breadcrumb');
+  container.innerHTML = this.breadcrumbPath.map((item, index) => {
+    const isLast = index === this.breadcrumbPath.length - 1;
+    return `
+      ${index > 0 ? '<span class="breadcrumb-separator"><i class="ph ph-caret-right"></i></span>' : ''}
+      <span class="breadcrumb-item ${isLast ? 'active' : ''}" data-id="${item.id}" data-index="${index}">
+        ${index === 0 ? '<i class="ph ph-house"></i>' : ''} ${item.name}
+      </span>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.breadcrumb-item:not(.active)').forEach(el => {
+    el.addEventListener('click', () => {
+      const index = parseInt(el.dataset.index);
+      this.breadcrumbPath = this.breadcrumbPath.slice(0, index + 1);
+      this.currentFolder = this.breadcrumbPath[index].id;
+      this.loadFolderContents();
+    });
+  });
+};
+
+Drive.changeViewMode = function(mode) {
+  this.viewMode = mode;
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === mode);
+  });
+  document.getElementById('drive-content').className = `drive-content view-${mode}`;
+  this.sortAndRenderContents();
+};
+
+Drive.sortAndRenderContents = function() {
+  this.files.sort((a, b) => {
+    let cmp = 0;
+    switch (this.sortBy) {
+      case 'name': cmp = (a.name || '').localeCompare(b.name || ''); break;
+      case 'size': cmp = (a.file_size_kb || 0) - (b.file_size_kb || 0); break;
+      case 'type': cmp = (a.file_type || '').localeCompare(b.file_type || ''); break;
+      case 'date': cmp = new Date(a.created_at || 0) - new Date(b.created_at || 0); break;
+    }
+    return this.sortOrder === 'asc' ? cmp : -cmp;
+  });
+  this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  this.renderContents();
+};
+
+Drive.renderContents = function() {
+  const content = document.getElementById('drive-content');
+  
+  if (this.folders.length === 0 && this.files.length === 0) {
+    content.innerHTML = `
+      <div class="empty-state">
+        <i class="ph ph-folder-open"></i>
+        <p>Pasta vazia</p>
+        <span class="empty-hint">Arraste arquivos ou use o botão Upload</span>
+      </div>
+    `;
+    return;
+  }
+
+  this.viewMode === 'list' ? this.renderListView() : this.renderGridView();
+};
+
+Drive.renderGridView = function() {
+  const content = document.getElementById('drive-content');
+  let html = '';
+
+  if (this.folders.length > 0) {
+    html += `
+      <div class="folders-section">
+        <div class="section-title"><i class="ph ph-folder"></i> Pastas (${this.folders.length})</div>
+        <div class="folders-grid">${this.folders.map(f => this.renderFolderItem(f)).join('')}</div>
+      </div>
+    `;
+  }
+
+  if (this.files.length > 0) {
+    html += `
+      <div class="files-section">
+        <div class="section-title"><i class="ph ph-image"></i> Arquivos (${this.files.length})</div>
+        <div class="files-grid">${this.files.map(f => this.renderFileItem(f)).join('')}</div>
+      </div>
+    `;
+  }
+
+  content.innerHTML = html;
+};
+
+Drive.renderListView = function() {
+  const content = document.getElementById('drive-content');
+  let html = '<div class="files-list">';
+  html += this.folders.map(f => this.renderFolderListItem(f)).join('');
+  html += this.files.map(f => this.renderFileListItem(f)).join('');
+  html += '</div>';
+  content.innerHTML = html;
+};
+
+// FIM DA PARTE 2
+// Continue com a Parte 3
+// ============================================
+// DRIVE.JS - PARTE 3 DE 5
+// Cole este código APÓS a Parte 2
+// ============================================
+
+// Continuação do objeto Drive...
+
+Drive.renderFolderItem = function(folder) {
+  const isSelected = this.selectedItems.has(`folder-${folder.id}`);
+  return `
+    <div class="folder-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
+      <div class="item-select-indicator"></div>
+      <i class="ph-fill ph-folder"></i>
+      <div class="folder-name" title="${folder.name}">${folder.name}</div>
+    </div>
+  `;
+};
+
+Drive.renderFileItem = function(file) {
+  const isSelected = this.selectedItems.has(`file-${file.id}`);
+  const thumbnailUrl = file.url_thumbnail || file.url_media;
+  
+  return `
+    <div class="file-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
+      <div class="item-select-indicator"></div>
+      <div class="file-thumbnail">
+        <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
+        ${file.file_type === 'video' ? '<span class="file-type-badge"><i class="ph-fill ph-play"></i></span>' : ''}
+      </div>
+    </div>
+  `;
+};
+
+Drive.renderFolderListItem = function(folder) {
+  const isSelected = this.selectedItems.has(`folder-${folder.id}`);
+  const createdDate = folder.created_at ? this.formatDate(folder.created_at) : '';
+  
+  return `
+    <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
+      <div class="item-select-indicator"></div>
+      <div class="list-item-icon folder"><i class="ph-fill ph-folder"></i></div>
+      <div class="file-list-info">
+        <div class="file-list-name">${folder.name}</div>
+        <div class="file-list-meta">Pasta</div>
+        ${createdDate ? `
+          <div class="file-list-details">
+            <span class="file-detail-tag"><i class="ph ph-calendar"></i> ${createdDate}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+};
+
+Drive.renderFileListItem = function(file) {
+  const isSelected = this.selectedItems.has(`file-${file.id}`);
+  const typeClass = file.file_type === 'video' ? 'type-video' : 'type-image';
+  const typeLabel = file.file_type === 'video' ? 'Vídeo' : 'Imagem';
+  const thumbnailUrl = file.url_thumbnail || file.url_media;
+  
+  const details = [];
+  details.push(`<span class="file-detail-tag ${typeClass}"><i class="ph ph-${file.file_type === 'video' ? 'video-camera' : 'image'}"></i> ${typeLabel}</span>`);
+  
+  if (file.file_size_kb) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-hard-drive"></i> ${this.formatFileSize(file.file_size_kb)}</span>`);
+  }
+  
+  if (file.dimensions) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-frame-corners"></i> ${file.dimensions}</span>`);
+  }
+  
+  if (file.duration) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-timer"></i> ${this.formatDuration(file.duration)}</span>`);
+  }
+  
+  if (file.mime_type) {
+    const mimeShort = file.mime_type.split('/')[1]?.toUpperCase() || file.mime_type;
+    details.push(`<span class="file-detail-tag"><i class="ph ph-file"></i> ${mimeShort}</span>`);
+  }
+  
+  if (file.data_de_captura) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-camera"></i> ${this.formatDate(file.data_de_captura)}</span>`);
+  }
+  
+  if (file.created_at) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-cloud-arrow-up"></i> ${this.formatDate(file.created_at)}</span>`);
+  }
+  
+  if (file.updated_at && file.updated_at !== file.created_at) {
+    details.push(`<span class="file-detail-tag"><i class="ph ph-pencil"></i> ${this.formatDate(file.updated_at)}</span>`);
+  }
+
+  return `
+    <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
+      <div class="item-select-indicator"></div>
+      <div class="file-list-thumbnail">
+        <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
+        ${file.file_type === 'video' ? '<span class="video-indicator"><i class="ph-fill ph-play"></i></span>' : ''}
+      </div>
+      <div class="file-list-info">
+        <div class="file-list-name">${file.name}</div>
+        <div class="file-list-details">${details.join('')}</div>
+      </div>
+    </div>
+  `;
+};
+
+Drive.formatFileSize = function(kb) {
+  if (!kb) return '';
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
+};
+
+Drive.formatDuration = function(seconds) {
+  if (!seconds) return '';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+Drive.formatDate = function(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('pt-BR', { 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+Drive.formatSpeed = function(bytesPerSecond) {
+  const mbps = (bytesPerSecond * 8) / 1000000;
+  const kbps = (bytesPerSecond * 8) / 1000;
+  if (mbps >= 1) return `${mbps.toFixed(2)} Mbps`;
+  return `${kbps.toFixed(0)} Kbps`;
+};
+
+Drive.formatTime = function(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
+  const mins = Math.floor(ms / 60000);
+  const secs = Math.floor((ms % 60000) / 1000);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+Drive.formatBytes = function(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+Drive.clearSelection = function() {
+  this.selectedItems.clear();
+  this.lastSelectedItem = null;
+  this.updateSelectionUI();
+};
+
+Drive.updateSelectionUI = function() {
+  document.querySelectorAll('.folder-item, .file-item, .file-list-item').forEach(el => {
+    const type = this.getItemType(el);
+    const id = el.dataset.id;
+    el.classList.toggle('selected', this.selectedItems.has(`${type}-${id}`));
+  });
+
+  const selectionBar = document.getElementById('selection-bar');
+  if (this.selectedItems.size > 0) {
+    selectionBar.classList.add('show');
+    document.getElementById('selection-count').textContent = 
+      `${this.selectedItems.size} ${this.selectedItems.size === 1 ? 'item' : 'itens'}`;
+  } else {
+    selectionBar.classList.remove('show');
+  }
+};
+
+Drive.deleteSelected = async function() {
+  const items = Array.from(this.selectedItems);
+  if (items.length === 0) return;
+
+  if (!confirm(`Excluir ${items.length} ${items.length === 1 ? 'item' : 'itens'}?`)) return;
+
+  try {
+    Notificacao.show('Excluindo...', 'info');
+    const filesToDelete = [];
+    
+    for (const item of items) {
+      const [type, id] = item.split('-');
+      if (type === 'folder') {
+        const result = await window.driveAPI.deleteFolder(id);
+        if (result.success && result.deletedFiles) filesToDelete.push(...result.deletedFiles);
+      } else {
+        const file = this.files.find(f => String(f.id) === String(id));
+        if (file) {
+          filesToDelete.push(file.path);
+          await window.driveAPI.deleteFile(id);
+        }
+      }
+    }
+
+    if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
+
+    Notificacao.show('Excluído!', 'success');
+    this.clearSelection();
+    await this.loadClientsStorage();
+    this.renderClientList();
+    await this.loadFolderContents();
+  } catch (error) {
+    console.error('[Drive] Erro:', error);
+    Notificacao.show('Erro: ' + error.message, 'error');
+  }
+};
+
+Drive.downloadSelected = async function() {
+  const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
+  
+  if (fileItems.length === 0) {
+    Notificacao.show('Selecione arquivos para baixar', 'warning');
+    return;
+  }
+
+  const files = fileItems.map(item => {
+    const id = item.split('-')[1];
+    return this.files.find(f => String(f.id) === String(id));
+  }).filter(f => f);
+
+  await this.downloadFilesAsZip(files);
+};
+
+Drive.downloadFilesAsZip = async function(files) {
+  if (!files || files.length === 0) return;
+
+  try {
+    Notificacao.show('Preparando download...', 'info');
+
+    const zip = new JSZip();
+    let completed = 0;
+
+    for (const file of files) {
+      try {
+        Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
+        
+        const response = await fetch(file.url_media);
+        if (!response.ok) throw new Error(`Erro ao baixar ${file.name}`);
+        
+        const blob = await response.blob();
+        const fileName = file.name || file.path?.split('/').pop() || `arquivo_${file.id}`;
+        
+        zip.file(fileName, blob);
+        completed++;
+      } catch (error) {
+        console.error(`[Drive] Erro ao baixar ${file.name}:`, error);
+        Notificacao.show(`Erro ao baixar ${file.name}`, 'warning');
+      }
+    }
+
+    if (completed === 0) {
+      Notificacao.show('Nenhum arquivo foi baixado', 'error');
       return;
     }
 
-    this.viewMode === 'list' ? this.renderListView() : this.renderGridView();
-  },
-
-  renderGridView() {
-    const content = document.getElementById('drive-content');
-    let html = '';
-
-    if (this.folders.length > 0) {
-      html += `
-        <div class="folders-section">
-          <div class="section-title"><i class="ph ph-folder"></i> Pastas (${this.folders.length})</div>
-          <div class="folders-grid">${this.folders.map(f => this.renderFolderItem(f)).join('')}</div>
-        </div>
-      `;
-    }
-
-    if (this.files.length > 0) {
-      html += `
-        <div class="files-section">
-          <div class="section-title"><i class="ph ph-image"></i> Arquivos (${this.files.length})</div>
-          <div class="files-grid">${this.files.map(f => this.renderFileItem(f)).join('')}</div>
-        </div>
-      `;
-    }
-
-    content.innerHTML = html;
-  },
-
-  renderListView() {
-    const content = document.getElementById('drive-content');
-    let html = '<div class="files-list">';
-    html += this.folders.map(f => this.renderFolderListItem(f)).join('');
-    html += this.files.map(f => this.renderFileListItem(f)).join('');
-    html += '</div>';
-    content.innerHTML = html;
-  },
-
-  renderFolderItem(folder) {
-    const isSelected = this.selectedItems.has(`folder-${folder.id}`);
-    return `
-      <div class="folder-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
-        <div class="item-select-indicator"></div>
-        <i class="ph-fill ph-folder"></i>
-        <div class="folder-name" title="${folder.name}">${folder.name}</div>
-      </div>
-    `;
-  },
-
-  renderFileItem(file) {
-    const isSelected = this.selectedItems.has(`file-${file.id}`);
-    const thumbnailUrl = file.url_thumbnail || file.url_media;
-    
-    return `
-      <div class="file-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
-        <div class="item-select-indicator"></div>
-        <div class="file-thumbnail">
-          <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
-          ${file.file_type === 'video' ? '<span class="file-type-badge"><i class="ph-fill ph-play"></i></span>' : ''}
-        </div>
-      </div>
-    `;
-  },
-
-  renderFolderListItem(folder) {
-    const isSelected = this.selectedItems.has(`folder-${folder.id}`);
-    const createdDate = folder.created_at ? this.formatDate(folder.created_at) : '';
-    
-    return `
-      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${folder.id}">
-        <div class="item-select-indicator"></div>
-        <div class="list-item-icon folder"><i class="ph-fill ph-folder"></i></div>
-        <div class="file-list-info">
-          <div class="file-list-name">${folder.name}</div>
-          <div class="file-list-meta">Pasta</div>
-          ${createdDate ? `
-            <div class="file-list-details">
-              <span class="file-detail-tag"><i class="ph ph-calendar"></i> ${createdDate}</span>
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-  },
-
-  renderFileListItem(file) {
-    const isSelected = this.selectedItems.has(`file-${file.id}`);
-    const typeClass = file.file_type === 'video' ? 'type-video' : 'type-image';
-    const typeLabel = file.file_type === 'video' ? 'Vídeo' : 'Imagem';
-    const thumbnailUrl = file.url_thumbnail || file.url_media;
-    
-    const details = [];
-    details.push(`<span class="file-detail-tag ${typeClass}"><i class="ph ph-${file.file_type === 'video' ? 'video-camera' : 'image'}"></i> ${typeLabel}</span>`);
-    
-    if (file.file_size_kb) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-hard-drive"></i> ${this.formatFileSize(file.file_size_kb)}</span>`);
-    }
-    
-    if (file.dimensions) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-frame-corners"></i> ${file.dimensions}</span>`);
-    }
-    
-    if (file.duration) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-timer"></i> ${this.formatDuration(file.duration)}</span>`);
-    }
-    
-    if (file.mime_type) {
-      const mimeShort = file.mime_type.split('/')[1]?.toUpperCase() || file.mime_type;
-      details.push(`<span class="file-detail-tag"><i class="ph ph-file"></i> ${mimeShort}</span>`);
-    }
-    
-    if (file.data_de_captura) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-camera"></i> ${this.formatDate(file.data_de_captura)}</span>`);
-    }
-    
-    if (file.created_at) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-cloud-arrow-up"></i> ${this.formatDate(file.created_at)}</span>`);
-    }
-    
-    if (file.updated_at && file.updated_at !== file.created_at) {
-      details.push(`<span class="file-detail-tag"><i class="ph ph-pencil"></i> ${this.formatDate(file.updated_at)}</span>`);
-    }
-
-    return `
-      <div class="file-list-item ${isSelected ? 'selected' : ''}" data-id="${file.id}">
-        <div class="item-select-indicator"></div>
-        <div class="file-list-thumbnail">
-          <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
-          ${file.file_type === 'video' ? '<span class="video-indicator"><i class="ph-fill ph-play"></i></span>' : ''}
-        </div>
-        <div class="file-list-info">
-          <div class="file-list-name">${file.name}</div>
-          <div class="file-list-details">${details.join('')}</div>
-        </div>
-      </div>
-    `;
-  },
-
-  formatFileSize(kb) {
-    if (!kb) return '';
-    if (kb < 1024) return `${Math.round(kb)} KB`;
-    return `${(kb / 1024).toFixed(1)} MB`;
-  },
-
-  formatDuration(seconds) {
-    if (!seconds) return '';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  },
-
-  formatDate(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('pt-BR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  },
-
-  formatSpeed(bytesPerSecond) {
-    const mbps = (bytesPerSecond * 8) / 1000000;
-    const kbps = (bytesPerSecond * 8) / 1000;
-    if (mbps >= 1) return `${mbps.toFixed(2)} Mbps`;
-    return `${kbps.toFixed(0)} Kbps`;
-  },
-
-  formatTime(ms) {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
-    const mins = Math.floor(ms / 60000);
-    const secs = Math.floor((ms % 60000) / 1000);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  },
-
-  formatBytes(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  },
-
-  clearSelection() {
-    this.selectedItems.clear();
-    this.lastSelectedItem = null;
-    this.updateSelectionUI();
-  },
-
-  updateSelectionUI() {
-    document.querySelectorAll('.folder-item, .file-item, .file-list-item').forEach(el => {
-      const type = this.getItemType(el);
-      const id = el.dataset.id;
-      el.classList.toggle('selected', this.selectedItems.has(`${type}-${id}`));
+    Notificacao.show('Gerando arquivo ZIP...', 'info');
+    const zipBlob = await zip.generateAsync({ 
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
     });
 
-    const selectionBar = document.getElementById('selection-bar');
-    if (this.selectedItems.size > 0) {
-      selectionBar.classList.add('show');
-      document.getElementById('selection-count').textContent = 
-        `${this.selectedItems.size} ${this.selectedItems.size === 1 ? 'item' : 'itens'}`;
-    } else {
-      selectionBar.classList.remove('show');
-    }
-  },
+    const clientName = this.selectedClient?.users || 'arquivos';
+    const timestamp = new Date().toISOString().split('T')[0];
+    const zipName = files.length === 1 
+      ? `${files[0].name.split('.')[0]}.zip`
+      : `${clientName}_${timestamp}_${files.length}_arquivos.zip`;
 
-  async deleteSelected() {
-    const items = Array.from(this.selectedItems);
-    if (items.length === 0) return;
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = zipName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-    if (!confirm(`Excluir ${items.length} ${items.length === 1 ? 'item' : 'itens'}?`)) return;
+    Notificacao.show(`Download concluído! ${completed} arquivo(s)`, 'success');
+  } catch (error) {
+    console.error('[Drive] Erro ao criar ZIP:', error);
+    Notificacao.show('Erro ao criar arquivo ZIP', 'error');
+  }
+};
 
-    try {
-      Notificacao.show('Excluindo...', 'info');
-      const filesToDelete = [];
+Drive.downloadFile = async function(fileId) {
+  const file = this.files.find(f => String(f.id) === String(fileId));
+  if (!file) return;
+
+  await this.downloadFilesAsZip([file]);
+};
+
+Drive.navigateToFolder = async function(folderId) {
+  const folder = this.folders.find(f => String(f.id) === String(folderId));
+  if (!folder) return;
+
+  this.currentFolder = folder.id;
+  this.breadcrumbPath.push({ id: folder.id, name: folder.name });
+  await this.loadFolderContents();
+};
+
+Drive.previewFile = function(fileId) {
+  const file = this.files.find(f => String(f.id) === String(fileId));
+  if (!file) return;
+
+  const container = document.getElementById('preview-container');
+  const info = document.getElementById('preview-info');
+
+  if (file.file_type === 'video') {
+    container.innerHTML = `<video src="${file.url_media}" controls autoplay playsinline></video>`;
+  } else {
+    container.innerHTML = `<img src="${file.url_media}" alt="${file.name}">`;
+  }
+
+  const details = [];
+  if (file.dimensions) details.push(file.dimensions);
+  if (file.file_size_kb) details.push(this.formatFileSize(file.file_size_kb));
+  if (file.duration) details.push(this.formatDuration(file.duration));
+
+  info.innerHTML = `
+    <h4>${file.name}</h4>
+    ${details.length ? `<p>${details.join(' • ')}</p>` : ''}
+  `;
+
+  document.getElementById('modal-preview').classList.add('show');
+};
+
+Drive.createFolder = async function() {
+  const name = document.getElementById('folder-name').value.trim();
+  if (!name) {
+    Notificacao.show('Digite um nome', 'warning');
+    return;
+  }
+
+  try {
+    Notificacao.show('Criando pasta...', 'info');
+    
+    const result = await window.driveAPI.createFolder({
+      name,
+      clientId: this.selectedClient.id,
+      parentId: this.currentFolder
+    });
+
+    if (!result.success) throw new Error(result.error);
+
+    document.getElementById('modal-new-folder').classList.remove('show');
+    Notificacao.show('Pasta criada!', 'success');
+    await this.loadFolderContents();
+  } catch (error) {
+    console.error('[Drive] Erro:', error);
+    Notificacao.show('Erro: ' + error.message, 'error');
+  }
+};
+
+// FIM DA PARTE 3
+// Continue com a Parte 4
+// ============================================
+// DRIVE.JS - PARTE 4 DE 5
+// Cole este código APÓS a Parte 3
+// ============================================
+
+// Continuação do objeto Drive - Funções de Metadata e Upload...
+
+Drive.extractImageMetadata = async function(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({
+        dimensions: `${img.naturalWidth}x${img.naturalHeight}`,
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => resolve({ dimensions: null });
+    img.src = URL.createObjectURL(file);
+  });
+};
+
+Drive.extractVideoMetadata = async function(file) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    
+    video.onloadedmetadata = () => {
+      resolve({
+        dimensions: `${video.videoWidth}x${video.videoHeight}`,
+        width: video.videoWidth,
+        height: video.videoHeight,
+        duration: Math.round(video.duration * 100) / 100
+      });
+      URL.revokeObjectURL(video.src);
+    };
+    video.onerror = () => resolve({ dimensions: null, duration: null });
+    video.src = URL.createObjectURL(file);
+  });
+};
+
+Drive.generateVideoThumbnail = async function(file) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    video.preload = 'metadata';
+    video.muted = true;
+    
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1, video.duration * 0.1);
+    };
+    
+    video.onseeked = () => {
+      const thumbSize = this.THUMBNAIL_SIZE;
+      canvas.width = thumbSize;
+      canvas.height = thumbSize;
       
-      for (const item of items) {
-        const [type, id] = item.split('-');
-        if (type === 'folder') {
-          const result = await window.driveAPI.deleteFolder(id);
-          if (result.success && result.deletedFiles) filesToDelete.push(...result.deletedFiles);
-        } else {
-          const file = this.files.find(f => String(f.id) === String(id));
-          if (file) {
-            filesToDelete.push(file.path);
-            await window.driveAPI.deleteFile(id);
-          }
-        }
-      }
+      const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
+      const scaledWidth = video.videoWidth * scale;
+      const scaledHeight = video.videoHeight * scale;
+      
+      const x = (thumbSize - scaledWidth) / 2;
+      const y = (thumbSize - scaledHeight) / 2;
+      
+      ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
+      
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(video.src);
+        resolve(blob);
+      }, 'image/jpeg', 0.85);
+    };
+    
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src);
+      resolve(null);
+    };
+    
+    video.src = URL.createObjectURL(file);
+  });
+};
 
-      if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
+Drive.generateImageThumbnail = async function(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    img.onload = () => {
+      const thumbSize = this.THUMBNAIL_SIZE;
+      canvas.width = thumbSize;
+      canvas.height = thumbSize;
+      
+      const scale = Math.max(thumbSize / img.width, thumbSize / img.height);
+      const scaledWidth = img.width * scale;
+      const scaledHeight = img.height * scale;
+      
+      const x = (thumbSize - scaledWidth) / 2;
+      const y = (thumbSize - scaledHeight) / 2;
+      
+      ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+      
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(img.src);
+        resolve(blob);
+      }, 'image/jpeg', 0.85);
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      resolve(null);
+    };
+    
+    img.src = URL.createObjectURL(file);
+  });
+};
 
-      Notificacao.show('Excluído!', 'success');
-      this.clearSelection();
+Drive.extractCaptureDate = function(file) {
+  return file.lastModified ? new Date(file.lastModified).toISOString() : null;
+};
+
+Drive.uploadFiles = async function(files) {
+  if (!this.selectedClient) {
+    Notificacao.show('Selecione um cliente primeiro', 'warning');
+    return;
+  }
+
+  const allowedTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 
+    'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'
+  ];
+  
+  for (const file of files) {
+    if (!allowedTypes.includes(file.type)) {
+      Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
+      return;
+    }
+    
+    if (file.size > this.MAX_FILE_SIZE) {
+      const sizeMB = Math.round(file.size / (1024 * 1024));
+      const maxMB = Math.round(this.MAX_FILE_SIZE / (1024 * 1024));
+      Notificacao.show(
+        `Arquivo muito grande: ${file.name} (${sizeMB}MB). Máximo: ${maxMB}MB`, 
+        'warning'
+      );
+      return;
+    }
+  }
+
+  const largeFiles = files.filter(f => f.size > this.LARGE_FILE_WARNING);
+  if (largeFiles.length > 0) {
+    const totalSizeGB = largeFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024 * 1024);
+    Notificacao.show(
+      `Enviando ${largeFiles.length} arquivo(s) grande(s) (${totalSizeGB.toFixed(2)}GB). Isso pode demorar...`,
+      'info'
+    );
+  }
+
+  try {
+    const folderPath = this.currentFolder 
+      ? `drive/client-${this.selectedClient.id}/folder-${this.currentFolder}`
+      : `drive/client-${this.selectedClient.id}`;
+
+    this.uploadQueue = files.map((file, index) => {
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      const fileName = `${folderPath}/file-${index + 1}.${fileExtension}`;
+
+      return { 
+        file: file, 
+        fileName: fileName, 
+        originalMedia: null,
+        name: file.name,
+        type: file.type,
+        size: file.size
+      };
+    });
+
+    Notificacao.multiProgress.show(this.uploadQueue);
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    this.activeUploads = 0;
+
+    const uploadPromises = [];
+    for (let i = 0; i < this.MAX_CONCURRENT_UPLOADS; i++) {
+      uploadPromises.push(this.processUploadQueue());
+    }
+
+    await Promise.all(uploadPromises);
+
+    setTimeout(async () => {
+      Notificacao.multiProgress.hide();
+      Notificacao.show(`${files.length} arquivo(s) enviado(s)!`, 'success');
+      
       await this.loadClientsStorage();
       this.renderClientList();
-      await this.loadFolderContents();
-    } catch (error) {
-      console.error('[Drive] Erro:', error);
-      Notificacao.show('Erro: ' + error.message, 'error');
-    }
-  },
-
- async downloadSelected() {
-    const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
+      document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
+    }, 2000);
     
-    if (fileItems.length === 0) {
-      Notificacao.show('Selecione arquivos para baixar', 'warning');
-      return;
-    }
-
-    const files = fileItems.map(item => {
-      const id = item.split('-')[1];
-      return this.files.find(f => String(f.id) === String(id));
-    }).filter(f => f);
-
-    await this.downloadFilesAsZip(files);
-  },
-
-  async downloadFile(fileId) {
-    const file = this.files.find(f => String(f.id) === String(fileId));
-    if (!file) return;
-
-    await this.downloadFilesAsZip([file]);
-  },
-
-  async downloadFilesAsZip(files) {
-    if (!files || files.length === 0) return;
-
-    try {
-      Notificacao.show('Preparando download...', 'info');
-
-      const zip = new JSZip();
-      let completed = 0;
-
-      // Baixar cada arquivo e adicionar ao ZIP
-      for (const file of files) {
-        try {
-          Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
-          
-          const response = await fetch(file.url_media);
-          if (!response.ok) throw new Error(`Erro ao baixar ${file.name}`);
-          
-          const blob = await response.blob();
-          const fileName = file.name || file.path?.split('/').pop() || `arquivo_${file.id}`;
-          
-          zip.file(fileName, blob);
-          completed++;
-        } catch (error) {
-          console.error(`[Drive] Erro ao baixar ${file.name}:`, error);
-          Notificacao.show(`Erro ao baixar ${file.name}`, 'warning');
-        }
-      }
-
-      if (completed === 0) {
-        Notificacao.show('Nenhum arquivo foi baixado', 'error');
-        return;
-      }
-
-      // Gerar o ZIP
-      Notificacao.show('Gerando arquivo ZIP...', 'info');
-      const zipBlob = await zip.generateAsync({ 
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 }
-      });
-
-      // Criar nome do ZIP
-      const clientName = this.selectedClient?.users || 'arquivos';
-      const timestamp = new Date().toISOString().split('T')[0];
-      const zipName = files.length === 1 
-        ? `${files[0].name.split('.')[0]}.zip`
-        : `${clientName}_${timestamp}_${files.length}_arquivos.zip`;
-
-      // Download do ZIP
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = zipName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      Notificacao.show(`Download concluído! ${completed} arquivo(s)`, 'success');
-    } catch (error) {
-      console.error('[Drive] Erro ao criar ZIP:', error);
-      Notificacao.show('Erro ao criar arquivo ZIP', 'error');
-    }
-  },
-
-  async downloadFile(fileId) {
-    const file = this.files.find(f => String(f.id) === String(fileId));
-    if (!file) return;
-
-    try {
-      const fileName = file.path ? file.path.split('/').pop() : file.name;
-      const a = document.createElement('a');
-      a.href = file.url_media;
-      a.download = fileName;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('[Drive] Erro ao baixar:', error);
-      Notificacao.show('Erro ao baixar: ' + file.name, 'error');
-    }
-  },
-
-  async navigateToFolder(folderId) {
-    const folder = this.folders.find(f => String(f.id) === String(folderId));
-    if (!folder) return;
-
-    this.currentFolder = folder.id;
-    this.breadcrumbPath.push({ id: folder.id, name: folder.name });
     await this.loadFolderContents();
-  },
-
-  previewFile(fileId) {
-    const file = this.files.find(f => String(f.id) === String(fileId));
-    if (!file) return;
-
-    const container = document.getElementById('preview-container');
-    const info = document.getElementById('preview-info');
-
-    if (file.file_type === 'video') {
-      container.innerHTML = `<video src="${file.url_media}" controls autoplay playsinline></video>`;
-    } else {
-      container.innerHTML = `<img src="${file.url_media}" alt="${file.name}">`;
-    }
-
-    const details = [];
-    if (file.dimensions) details.push(file.dimensions);
-    if (file.file_size_kb) details.push(this.formatFileSize(file.file_size_kb));
-    if (file.duration) details.push(this.formatDuration(file.duration));
-
-    info.innerHTML = `
-      <h4>${file.name}</h4>
-      ${details.length ? `<p>${details.join(' • ')}</p>` : ''}
-    `;
-
-    document.getElementById('modal-preview').classList.add('show');
-  },
-
-  async createFolder() {
-    const name = document.getElementById('folder-name').value.trim();
-    if (!name) {
-      Notificacao.show('Digite um nome', 'warning');
-      return;
-    }
-
-    try {
-      Notificacao.show('Criando pasta...', 'info');
-      
-      const result = await window.driveAPI.createFolder({
-        name,
-        clientId: this.selectedClient.id,
-        parentId: this.currentFolder
-      });
-
-      if (!result.success) throw new Error(result.error);
-
-      document.getElementById('modal-new-folder').classList.remove('show');
-      Notificacao.show('Pasta criada!', 'success');
-      await this.loadFolderContents();
-    } catch (error) {
-      console.error('[Drive] Erro:', error);
-      Notificacao.show('Erro: ' + error.message, 'error');
-    }
-  },
-
-  async extractImageMetadata(file) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({
-          dimensions: `${img.naturalWidth}x${img.naturalHeight}`,
-          width: img.naturalWidth,
-          height: img.naturalHeight
-        });
-        URL.revokeObjectURL(img.src);
-      };
-      img.onerror = () => resolve({ dimensions: null });
-      img.src = URL.createObjectURL(file);
-    });
-  },
-
-  async extractVideoMetadata(file) {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      
-      video.onloadedmetadata = () => {
-        resolve({
-          dimensions: `${video.videoWidth}x${video.videoHeight}`,
-          width: video.videoWidth,
-          height: video.videoHeight,
-          duration: Math.round(video.duration * 100) / 100
-        });
-        URL.revokeObjectURL(video.src);
-      };
-      video.onerror = () => resolve({ dimensions: null, duration: null });
-      video.src = URL.createObjectURL(file);
-    });
-  },
-
-  async generateVideoThumbnail(file) {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      video.preload = 'metadata';
-      video.muted = true;
-      
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.min(1, video.duration * 0.1);
-      };
-      
-      video.onseeked = () => {
-        // Configurar canvas para thumbnail quadrado 150x150
-        const thumbSize = this.THUMBNAIL_SIZE;
-        canvas.width = thumbSize;
-        canvas.height = thumbSize;
-        
-        // Calcular dimensões para corte centralizado
-        const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
-        const scaledWidth = video.videoWidth * scale;
-        const scaledHeight = video.videoHeight * scale;
-        
-        // Centralizar o vídeo no canvas
-        const x = (thumbSize - scaledWidth) / 2;
-        const y = (thumbSize - scaledHeight) / 2;
-        
-        ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
-        
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(video.src);
-          resolve(blob);
-        }, 'image/jpeg', 0.85);
-      };
-      
-      video.onerror = () => {
-        URL.revokeObjectURL(video.src);
-        resolve(null);
-      };
-      
-      video.src = URL.createObjectURL(file);
-    });
-  },
-
-  async generateImageThumbnail(file) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      img.onload = () => {
-        // Configurar canvas para thumbnail quadrado 150x150
-        const thumbSize = this.THUMBNAIL_SIZE;
-        canvas.width = thumbSize;
-        canvas.height = thumbSize;
-        
-        // Calcular dimensões para corte centralizado
-        const scale = Math.max(thumbSize / img.width, thumbSize / img.height);
-        const scaledWidth = img.width * scale;
-        const scaledHeight = img.height * scale;
-        
-        // Centralizar a imagem no canvas
-        const x = (thumbSize - scaledWidth) / 2;
-        const y = (thumbSize - scaledHeight) / 2;
-        
-        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-        
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(img.src);
-          resolve(blob);
-        }, 'image/jpeg', 0.85);
-      };
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(img.src);
-        resolve(null);
-      };
-      
-      img.src = URL.createObjectURL(file);
-    });
-  },
-
-  extractCaptureDate(file) {
-    return file.lastModified ? new Date(file.lastModified).toISOString() : null;
-  },
-
-  async uploadFiles(files) {
-    if (!this.selectedClient) {
-      Notificacao.show('Selecione um cliente primeiro', 'warning');
-      return;
-    }
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'];
     
-    for (const file of files) {
-      if (!allowedTypes.includes(file.type)) {
-        Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
-        return;
-      }
-      if (file.size > 500 * 1024 * 1024) {
-        Notificacao.show(`Arquivo muito grande (max 500MB): ${file.name}`, 'warning');
-        return;
-      }
-    }
+  } catch (error) {
+    console.error('[Drive] Erro no upload:', error);
+    Notificacao.multiProgress.hide();
+    Notificacao.show('Erro no upload: ' + error.message, 'error');
+  }
+};
+
+Drive.processUploadQueue = async function() {
+  while (this.uploadQueue.length > 0) {
+    const task = this.uploadQueue.find(t => t.status === 'pending');
+    if (!task) break;
+
+    task.status = 'uploading';
+    this.activeUploads++;
 
     try {
-      const folderPath = this.currentFolder 
-        ? `drive/client-${this.selectedClient.id}/folder-${this.currentFolder}`
-        : `drive/client-${this.selectedClient.id}`;
-
-      // Preparar fila de uploads
-      this.uploadQueue = files.map((file, index) => ({
-        file,
-        index,
-        folderPath,
-        status: 'pending',
-        size: file.size,
-        name: file.name,
-        type: file.type
-      }));
-
-      // Mostrar interface multi-arquivo
-      Notificacao.multiProgress.show(this.uploadQueue);
-
-      this.activeUploads = 0;
-
-      // Iniciar uploads simultâneos
-      const uploadPromises = [];
-      for (let i = 0; i < this.MAX_CONCURRENT_UPLOADS; i++) {
-        uploadPromises.push(this.processUploadQueue());
-      }
-
-      await Promise.all(uploadPromises);
-
-      // Upload completo - aguardar 2 segundos antes de fechar
-      setTimeout(async () => {
-        Notificacao.multiProgress.hide();
-        Notificacao.show(`${files.length} arquivo(s) enviado(s)!`, 'success');
-        
-        await this.loadClientsStorage();
-        this.renderClientList();
-        document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
-      }, 2000);
-      
-      await this.loadFolderContents();
-      
+      await this.uploadSingleFile(task);
+      task.status = 'completed';
+      this.uploadStats.completedFiles++;
     } catch (error) {
-      console.error('[Drive] Erro no upload:', error);
-      Notificacao.multiProgress.hide();
-      Notificacao.show('Erro no upload: ' + error.message, 'error');
+      task.status = 'error';
+      console.error(`[Drive] Erro ao enviar ${task.file.name}:`, error);
+      Notificacao.multiProgress.setFileError(task.index, error.message);
+    } finally {
+      this.activeUploads--;
     }
-  },
+  }
+};
 
-  async processUploadQueue() {
-    while (this.uploadQueue.length > 0) {
-      const task = this.uploadQueue.find(t => t.status === 'pending');
-      if (!task) break;
+Drive.uploadSingleFile = async function(task) {
+  const { file, index, fileName } = task;
+  const isVideo = file.type.startsWith('video/');
 
-      task.status = 'uploading';
-      this.activeUploads++;
-
-      try {
-        await this.uploadSingleFile(task);
-        task.status = 'completed';
-        this.uploadStats.completedFiles++;
-      } catch (error) {
-        task.status = 'error';
-        console.error(`[Drive] Erro ao enviar ${task.file.name}:`, error);
-        throw error;
-      } finally {
-        this.activeUploads--;
-      }
-    }
-  },
-
-  async uploadSingleFile(task) {
-    const { file, index, folderPath } = task;
-    const isVideo = file.type.startsWith('video/');
-    const ext = file.name.split('.').pop().toLowerCase();
-    const timestamp = Date.now();
-    const fileName = `${folderPath}/${timestamp}-${index}.${ext}`;
-
-    // Marcar como fazendo upload
+  try {
     Notificacao.multiProgress.setFileUploading(index);
 
-    // Extrair metadados
     let metadata = isVideo 
       ? await this.extractVideoMetadata(file) 
       : await this.extractImageMetadata(file);
     
     const captureDate = this.extractCaptureDate(file);
 
-    // Gerar URL de upload
     const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
     if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
 
-    // Upload do arquivo principal com callback de progresso
     let lastTime = Date.now();
     let lastLoaded = 0;
     let speeds = [];
@@ -1212,10 +1273,8 @@ const Drive = {
       Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
     });
 
-    // Marcar como processando (gerando thumbnail)
     Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
 
-    // Gerar e fazer upload do thumbnail
     let thumbnailUrl = null;
     try {
       const thumbnailBlob = isVideo 
@@ -1223,7 +1282,7 @@ const Drive = {
         : await this.generateImageThumbnail(file);
       
       if (thumbnailBlob) {
-        const thumbFileName = `${folderPath}/thumb_${timestamp}-${index}.jpg`;
+        const thumbFileName = `${fileName.substring(0, fileName.lastIndexOf('/'))}/thumb_${Date.now()}-${index}.jpg`;
         const thumbUrlResult = await window.r2API.generateUploadUrl(
           thumbFileName, 
           'image/jpeg', 
@@ -1239,11 +1298,9 @@ const Drive = {
       console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
     }
     
-    // Marcar como processando (salvando no banco)
     Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
 
-    // Salvar registro no banco
-    await window.driveAPI.saveFile({
+    const saveResult = await window.driveAPI.saveFile({
       clientId: this.selectedClient.id,
       folderId: this.currentFolder,
       path: fileName,
@@ -1258,100 +1315,179 @@ const Drive = {
       dataDeCaptura: captureDate
     });
 
-    // Marcar como concluído
+    if (!saveResult.success) throw new Error('Erro ao salvar no banco');
+
     Notificacao.multiProgress.setFileCompleted(index);
-  },
 
-  uploadToR2WithProgress(file, uploadUrl, onProgress = null) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+  } catch (error) {
+    console.error(`[Drive] Erro completo em ${file.name}:`, error);
+    throw error;
+  }
+};
 
-      if (onProgress) {
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            onProgress(e.loaded);
-          }
-        });
-      }
+Drive.uploadToR2WithProgress = function(file, uploadUrl, onProgress = null) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    const fileSizeMB = file.size / (1024 * 1024);
+    const baseTimeout = 60000;
+    const timeoutPerMB = 2000;
+    const calculatedTimeout = Math.max(baseTimeout, fileSizeMB * timeoutPerMB);
+    const maxTimeout = 30 * 60 * 1000;
+    xhr.timeout = Math.min(calculatedTimeout, maxTimeout);
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+    console.log(`[Upload] ${file.name} - Timeout: ${(xhr.timeout / 1000).toFixed(0)}s (${fileSizeMB.toFixed(2)}MB)`);
+
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          onProgress(e.loaded);
         }
       });
-
-      xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
-      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
-
-      xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.timeout = 300000;
-      xhr.send(file);
-    });
-  },
-
-  async confirmDelete(type, id) {
-    const msg = type === 'folder' ? 'Excluir esta pasta?' : 'Excluir este arquivo?';
-    if (!confirm(msg)) return;
-
-    try {
-      Notificacao.show('Excluindo...', 'info');
-      
-      let filesToDelete = [];
-      
-      if (type === 'folder') {
-        const result = await window.driveAPI.deleteFolder(id);
-        if (!result.success) throw new Error(result.error);
-        if (result.deletedFiles) filesToDelete = result.deletedFiles;
-      } else {
-        const file = this.files.find(f => String(f.id) === String(id));
-        if (file) {
-          filesToDelete.push(file.path);
-          if (file.url_thumbnail) {
-            const thumbPath = file.url_thumbnail.split('.com/')[1];
-            if (thumbPath) filesToDelete.push(thumbPath);
-          }
-          const result = await window.driveAPI.deleteFile(id);
-          if (!result.success) throw new Error(result.error);
-        }
-      }
-
-      if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
-
-      Notificacao.show('Excluído!', 'success');
-      this.clearSelection();
-      
-      await this.loadClientsStorage();
-      this.renderClientList();
-      document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
-      
-      await this.loadFolderContents();
-    } catch (error) {
-      console.error('[Drive] Erro:', error);
-      Notificacao.show('Erro: ' + error.message, 'error');
     }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        console.log(`[Upload] ✓ ${file.name} - ${xhr.status}`);
+        resolve();
+      } else {
+        const errorMsg = `HTTP ${xhr.status}: ${xhr.statusText}`;
+        console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
+        reject(new Error(errorMsg));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      const errorMsg = 'Erro de rede - Verifique sua conexão';
+      console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
+      reject(new Error(errorMsg));
+    });
+
+    xhr.addEventListener('timeout', () => {
+      const errorMsg = `Timeout após ${(xhr.timeout / 1000).toFixed(0)}s`;
+      console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
+      reject(new Error(errorMsg));
+    });
+
+    xhr.addEventListener('abort', () => {
+      const errorMsg = 'Upload cancelado';
+      console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
+      reject(new Error(errorMsg));
+    });
+
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    
+    try {
+      xhr.send(file);
+    } catch (error) {
+      console.error(`[Upload] ✗ ${file.name} - Erro ao enviar:`, error);
+      reject(error);
+    }
+  });
+};
+
+Drive.confirmDelete = async function(type, id) {
+  const msg = type === 'folder' ? 'Excluir esta pasta?' : 'Excluir este arquivo?';
+  if (!confirm(msg)) return;
+
+  try {
+    Notificacao.show('Excluindo...', 'info');
+    
+    let filesToDelete = [];
+    
+    if (type === 'folder') {
+      const result = await window.driveAPI.deleteFolder(id);
+      if (!result.success) throw new Error(result.error);
+      if (result.deletedFiles) filesToDelete = result.deletedFiles;
+    } else {
+      const file = this.files.find(f => String(f.id) === String(id));
+      if (file) {
+        filesToDelete.push(file.path);
+        if (file.url_thumbnail) {
+          const thumbPath = file.url_thumbnail.split('.com/')[1];
+          if (thumbPath) filesToDelete.push(thumbPath);
+        }
+        const result = await window.driveAPI.deleteFile(id);
+        if (!result.success) throw new Error(result.error);
+      }
+    }
+
+    if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
+
+    Notificacao.show('Excluído!', 'success');
+    this.clearSelection();
+    
+    await this.loadClientsStorage();
+    this.renderClientList();
+    document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
+    
+    await this.loadFolderContents();
+  } catch (error) {
+    console.error('[Drive] Erro:', error);
+    Notificacao.show('Erro: ' + error.message, 'error');
   }
 };
 
-// Sobrescrever showCorrectScreen do Auth
-Auth.showCorrectScreen = function() {
-  const loginScreen = document.getElementById('login-screen');
-  const driveSystem = document.getElementById('drive-system');
-  
-  if (!loginScreen || !driveSystem) return false;
-  
-  if (this.isAuthenticated()) {
-    loginScreen.style.display = 'none';
-    driveSystem.classList.add('active');
-    return true;
+// FIM DA PARTE 4
+// Continue com a Parte 5 (FINAL)
+// ============================================
+// DRIVE.JS - PARTE 5 DE 5 (FINAL)
+// Cole este código APÓS a Parte 4
+// Este é o final do arquivo
+// ============================================
+
+// Sobrescrever Auth.showCorrectScreen para Drive
+if (typeof Auth !== 'undefined') {
+  Auth.showCorrectScreen = function() {
+    const loginScreen = document.getElementById('login-screen');
+    const driveSystem = document.getElementById('drive-system');
+    
+    console.log('[Auth Drive] Verificando telas:', {
+      loginExists: !!loginScreen,
+      driveExists: !!driveSystem,
+      isAuth: this.isAuthenticated()
+    });
+    
+    if (!loginScreen || !driveSystem) {
+      console.error('[Auth Drive] Elementos não encontrados');
+      return false;
+    }
+    
+    if (this.isAuthenticated()) {
+      console.log('[Auth Drive] Usuário autenticado - mostrando drive');
+      loginScreen.style.display = 'none';
+      driveSystem.style.display = 'block';
+      driveSystem.classList.add('active');
+      return true;
+    } else {
+      console.log('[Auth Drive] Usuário NÃO autenticado - mostrando login');
+      loginScreen.style.display = 'block';
+      driveSystem.style.display = 'none';
+      driveSystem.classList.remove('active');
+      return false;
+    }
+  };
+}
+
+// Inicializar quando DOM carregar
+console.log('[Drive] Script carregado, aguardando DOMContentLoaded...');
+
+// Função de inicialização
+const initializeDrive = () => {
+  console.log('[Drive] DOMContentLoaded disparado!');
+  if (typeof Drive !== 'undefined') {
+    Drive.init();
   } else {
-    loginScreen.style.display = 'block';
-    driveSystem.classList.remove('active');
-    return false;
+    console.error('[Drive] Objeto Drive não encontrado!');
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => Drive.init());
-
+// Se o DOM já estiver carregado, executar imediatamente
+if (document.readyState === 'loading') {
+  console.log('[Drive] DOM ainda carregando, aguardando...');
+  document.addEventListener('DOMContentLoaded', initializeDrive);
+} else {
+  console.log('[Drive] DOM já carregado, inicializando imediatamente');
+  initializeDrive();
+}
