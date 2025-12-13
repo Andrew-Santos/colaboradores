@@ -1089,8 +1089,8 @@ const Drive = {
         Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
         return;
       }
-      if (file.size > 500 * 1024 * 1024) {
-        Notificacao.show(`Arquivo muito grande (max 500MB): ${file.name}`, 'warning');
+      if (file.size > 5000 * 1024 * 1024) {
+        Notificacao.show(`Arquivo muito grande (max 5gb): ${file.name}`, 'warning');
         return;
       }
     }
@@ -1354,4 +1354,5 @@ Auth.showCorrectScreen = function() {
 };
 
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
 
