@@ -14,11 +14,9 @@ const Drive = {
   lastTapTime: 0,
   lastTapItem: null,
   
-  // ⭐ CONFIGURAÇÕES CORRIGIDAS
+  // Configurações de upload otimizadas
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
-  MAX_FILE_SIZE: 2 * 1024 * 1024 * 1024, // 2GB
-  LARGE_FILE_WARNING: 500 * 1024 * 1024, // 500MB (corrigido!)
   uploadQueue: [],
   activeUploads: 0,
   uploadStats: {
@@ -459,13 +457,7 @@ const Drive = {
 
     document.getElementById('drive-toolbar').style.display = 'flex';
     await this.loadFolderContents();
-  }
-};
-
-// ============================================
-// PARTE 2 - CONTINUAÇÃO DO OBJETO Drive
-// Cole após a Parte 1
-// ============================================
+  },
 
   async loadFolderContents() {
     try {
@@ -690,8 +682,7 @@ const Drive = {
   formatFileSize(kb) {
     if (!kb) return '';
     if (kb < 1024) return `${Math.round(kb)} KB`;
-    if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
-    return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
   },
 
   formatDuration(seconds) {
@@ -794,7 +785,7 @@ const Drive = {
     }
   },
 
-  async downloadSelected() {
+ async downloadSelected() {
     const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
     
     if (fileItems.length === 0) {
@@ -810,6 +801,13 @@ const Drive = {
     await this.downloadFilesAsZip(files);
   },
 
+  async downloadFile(fileId) {
+    const file = this.files.find(f => String(f.id) === String(fileId));
+    if (!file) return;
+
+    await this.downloadFilesAsZip([file]);
+  },
+
   async downloadFilesAsZip(files) {
     if (!files || files.length === 0) return;
 
@@ -819,6 +817,7 @@ const Drive = {
       const zip = new JSZip();
       let completed = 0;
 
+      // Baixar cada arquivo e adicionar ao ZIP
       for (const file of files) {
         try {
           Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
@@ -842,6 +841,7 @@ const Drive = {
         return;
       }
 
+      // Gerar o ZIP
       Notificacao.show('Gerando arquivo ZIP...', 'info');
       const zipBlob = await zip.generateAsync({ 
         type: 'blob',
@@ -849,12 +849,14 @@ const Drive = {
         compressionOptions: { level: 6 }
       });
 
+      // Criar nome do ZIP
       const clientName = this.selectedClient?.users || 'arquivos';
       const timestamp = new Date().toISOString().split('T')[0];
       const zipName = files.length === 1 
         ? `${files[0].name.split('.')[0]}.zip`
         : `${clientName}_${timestamp}_${files.length}_arquivos.zip`;
 
+      // Download do ZIP
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -875,7 +877,19 @@ const Drive = {
     const file = this.files.find(f => String(f.id) === String(fileId));
     if (!file) return;
 
-    await this.downloadFilesAsZip([file]);
+    try {
+      const fileName = file.path ? file.path.split('/').pop() : file.name;
+      const a = document.createElement('a');
+      a.href = file.url_media;
+      a.download = fileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('[Drive] Erro ao baixar:', error);
+      Notificacao.show('Erro ao baixar: ' + file.name, 'error');
+    }
   },
 
   async navigateToFolder(folderId) {
@@ -989,14 +1003,17 @@ const Drive = {
       };
       
       video.onseeked = () => {
+        // Configurar canvas para thumbnail quadrado 150x150
         const thumbSize = this.THUMBNAIL_SIZE;
         canvas.width = thumbSize;
         canvas.height = thumbSize;
         
+        // Calcular dimensões para corte centralizado
         const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
         const scaledWidth = video.videoWidth * scale;
         const scaledHeight = video.videoHeight * scale;
         
+        // Centralizar o vídeo no canvas
         const x = (thumbSize - scaledWidth) / 2;
         const y = (thumbSize - scaledHeight) / 2;
         
@@ -1024,14 +1041,17 @@ const Drive = {
       const ctx = canvas.getContext('2d');
       
       img.onload = () => {
+        // Configurar canvas para thumbnail quadrado 150x150
         const thumbSize = this.THUMBNAIL_SIZE;
         canvas.width = thumbSize;
         canvas.height = thumbSize;
         
+        // Calcular dimensões para corte centralizado
         const scale = Math.max(thumbSize / img.width, thumbSize / img.height);
         const scaledWidth = img.width * scale;
         const scaledHeight = img.height * scale;
         
+        // Centralizar a imagem no canvas
         const x = (thumbSize - scaledWidth) / 2;
         const y = (thumbSize - scaledHeight) / 2;
         
@@ -1054,13 +1074,7 @@ const Drive = {
 
   extractCaptureDate(file) {
     return file.lastModified ? new Date(file.lastModified).toISOString() : null;
-  }
-};
-
-// ============================================
-// PARTE 3 FINAL - SISTEMA DE UPLOAD CORRIGIDO
-// Cole após a Parte 2
-// ============================================
+  },
 
   async uploadFiles(files) {
     if (!this.selectedClient) {
@@ -1068,37 +1082,17 @@ const Drive = {
       return;
     }
 
-    const allowedTypes = [
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 
-      'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'
-    ];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'];
     
-    // ⭐ VALIDAÇÃO CORRIGIDA
     for (const file of files) {
       if (!allowedTypes.includes(file.type)) {
         Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
         return;
       }
-      
-      if (file.size > this.MAX_FILE_SIZE) {
-        const sizeMB = Math.round(file.size / (1024 * 1024));
-        const maxMB = Math.round(this.MAX_FILE_SIZE / (1024 * 1024));
-        Notificacao.show(
-          `Arquivo muito grande: ${file.name} (${sizeMB}MB). Máximo: ${maxMB}MB`, 
-          'warning'
-        );
+      if (file.size > 500 * 1024 * 1024) {
+        Notificacao.show(`Arquivo muito grande (max 500MB): ${file.name}`, 'warning');
         return;
       }
-    }
-
-    // ⭐ AVISO CORRIGIDO - Agora usa 500MB
-    const largeFiles = files.filter(f => f.size > this.LARGE_FILE_WARNING);
-    if (largeFiles.length > 0) {
-      const totalSizeGB = largeFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024 * 1024);
-      Notificacao.show(
-        `Enviando ${largeFiles.length} arquivo(s) grande(s) (${totalSizeGB.toFixed(2)}GB). Isso pode demorar...`,
-        'info'
-      );
     }
 
     try {
@@ -1164,7 +1158,7 @@ const Drive = {
       } catch (error) {
         task.status = 'error';
         console.error(`[Drive] Erro ao enviar ${task.file.name}:`, error);
-        Notificacao.multiProgress.setFileError(task.index, error.message);
+        throw error;
       } finally {
         this.activeUploads--;
       }
@@ -1178,120 +1172,100 @@ const Drive = {
     const timestamp = Date.now();
     const fileName = `${folderPath}/${timestamp}-${index}.${ext}`;
 
-    try {
-      // Marcar como fazendo upload
-      Notificacao.multiProgress.setFileUploading(index);
+    // Marcar como fazendo upload
+    Notificacao.multiProgress.setFileUploading(index);
 
-      // Extrair metadados
-      let metadata = isVideo 
-        ? await this.extractVideoMetadata(file) 
-        : await this.extractImageMetadata(file);
+    // Extrair metadados
+    let metadata = isVideo 
+      ? await this.extractVideoMetadata(file) 
+      : await this.extractImageMetadata(file);
+    
+    const captureDate = this.extractCaptureDate(file);
+
+    // Gerar URL de upload
+    const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
+    if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
+
+    // Upload do arquivo principal com callback de progresso
+    let lastTime = Date.now();
+    let lastLoaded = 0;
+    let speeds = [];
+
+    await this.uploadToR2WithProgress(file, urlResult.uploadUrl, (loaded) => {
+      const now = Date.now();
+      const timeDiff = (now - lastTime) / 1000;
+      const bytesDiff = loaded - lastLoaded;
       
-      const captureDate = this.extractCaptureDate(file);
-
-      // Gerar URL de upload
-      const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
-      if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
-
-      // ⭐ Upload do arquivo principal com callback de progresso
-      let lastTime = Date.now();
-      let lastLoaded = 0;
-      let speeds = [];
-
-      await this.uploadToR2WithProgress(file, urlResult.uploadUrl, (loaded) => {
-        const now = Date.now();
-        const timeDiff = (now - lastTime) / 1000;
-        const bytesDiff = loaded - lastLoaded;
-        
-        if (timeDiff > 0) {
-          const speed = bytesDiff / timeDiff;
-          speeds.push(speed);
-          if (speeds.length > 5) speeds.shift();
-        }
-        
-        const avgSpeed = speeds.length > 0 
-          ? speeds.reduce((a, b) => a + b, 0) / speeds.length 
-          : 0;
-        
-        lastTime = now;
-        lastLoaded = loaded;
-        
-        Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
-      });
-
-      // Marcar como processando (gerando thumbnail)
-      Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
-
-      // Gerar e fazer upload do thumbnail
-      let thumbnailUrl = null;
-      try {
-        const thumbnailBlob = isVideo 
-          ? await this.generateVideoThumbnail(file)
-          : await this.generateImageThumbnail(file);
-        
-        if (thumbnailBlob) {
-          const thumbFileName = `${folderPath}/thumb_${timestamp}-${index}.jpg`;
-          const thumbUrlResult = await window.r2API.generateUploadUrl(
-            thumbFileName, 
-            'image/jpeg', 
-            thumbnailBlob.size
-          );
-          
-          if (thumbUrlResult.success) {
-            await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl);
-            thumbnailUrl = thumbUrlResult.publicUrl;
-          }
-        }
-      } catch (thumbError) {
-        console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
+      if (timeDiff > 0) {
+        const speed = bytesDiff / timeDiff;
+        speeds.push(speed);
+        if (speeds.length > 5) speeds.shift();
       }
       
-      // Marcar como processando (salvando no banco)
-      Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
+      const avgSpeed = speeds.length > 0 
+        ? speeds.reduce((a, b) => a + b, 0) / speeds.length 
+        : 0;
+      
+      lastTime = now;
+      lastLoaded = loaded;
+      
+      Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
+    });
 
-      // Salvar registro no banco
-      const saveResult = await window.driveAPI.saveFile({
-        clientId: this.selectedClient.id,
-        folderId: this.currentFolder,
-        path: fileName,
-        name: file.name,
-        urlMedia: urlResult.publicUrl,
-        urlThumbnail: thumbnailUrl,
-        fileType: isVideo ? 'video' : 'image',
-        mimeType: file.type,
-        fileSizeKb: Math.round(file.size / 1024),
-        dimensions: metadata.dimensions || null,
-        duration: metadata.duration || null,
-        dataDeCaptura: captureDate
-      });
+    // Marcar como processando (gerando thumbnail)
+    Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
 
-      if (!saveResult.success) throw new Error('Erro ao salvar no banco');
-
-      // Marcar como concluído
-      Notificacao.multiProgress.setFileCompleted(index);
-
-    } catch (error) {
-      console.error(`[Drive] Erro completo em ${file.name}:`, error);
-      throw error;
+    // Gerar e fazer upload do thumbnail
+    let thumbnailUrl = null;
+    try {
+      const thumbnailBlob = isVideo 
+        ? await this.generateVideoThumbnail(file)
+        : await this.generateImageThumbnail(file);
+      
+      if (thumbnailBlob) {
+        const thumbFileName = `${folderPath}/thumb_${timestamp}-${index}.jpg`;
+        const thumbUrlResult = await window.r2API.generateUploadUrl(
+          thumbFileName, 
+          'image/jpeg', 
+          thumbnailBlob.size
+        );
+        
+        if (thumbUrlResult.success) {
+          await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl);
+          thumbnailUrl = thumbUrlResult.publicUrl;
+        }
+      }
+    } catch (thumbError) {
+      console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
     }
+    
+    // Marcar como processando (salvando no banco)
+    Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
+
+    // Salvar registro no banco
+    await window.driveAPI.saveFile({
+      clientId: this.selectedClient.id,
+      folderId: this.currentFolder,
+      path: fileName,
+      name: file.name,
+      urlMedia: urlResult.publicUrl,
+      urlThumbnail: thumbnailUrl,
+      fileType: isVideo ? 'video' : 'image',
+      mimeType: file.type,
+      fileSizeKb: Math.round(file.size / 1024),
+      dimensions: metadata.dimensions || null,
+      duration: metadata.duration || null,
+      dataDeCaptura: captureDate
+    });
+
+    // Marcar como concluído
+    Notificacao.multiProgress.setFileCompleted(index);
   },
 
-  // ⭐ FUNÇÃO DE UPLOAD CORRIGIDA COM TIMEOUT DINÂMICO E MELHOR TRATAMENTO DE ERROS
   uploadToR2WithProgress(file, uploadUrl, onProgress = null) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
-      // Calcular timeout baseado no tamanho do arquivo
-      const fileSizeMB = file.size / (1024 * 1024);
-      const baseTimeout = 60000; // 1 minuto base
-      const timeoutPerMB = 2000; // 2 segundos por MB
-      const calculatedTimeout = Math.max(baseTimeout, fileSizeMB * timeoutPerMB);
-      const maxTimeout = 30 * 60 * 1000; // Máximo 30 minutos
-      xhr.timeout = Math.min(calculatedTimeout, maxTimeout);
 
-      console.log(`[Upload] ${file.name} - Timeout: ${(xhr.timeout / 1000).toFixed(0)}s (${fileSizeMB.toFixed(2)}MB)`);
-
-      // Progress
       if (onProgress) {
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
@@ -1300,49 +1274,21 @@ const Drive = {
         });
       }
 
-      // Success
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          console.log(`[Upload] ✓ ${file.name} - ${xhr.status}`);
           resolve();
         } else {
-          const errorMsg = `HTTP ${xhr.status}: ${xhr.statusText}`;
-          console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
-          reject(new Error(errorMsg));
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
         }
       });
 
-      // Network Error
-      xhr.addEventListener('error', () => {
-        const errorMsg = 'Erro de rede - Verifique sua conexão';
-        console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
-        reject(new Error(errorMsg));
-      });
+      xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
+      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
 
-      // Timeout
-      xhr.addEventListener('timeout', () => {
-        const errorMsg = `Timeout após ${(xhr.timeout / 1000).toFixed(0)}s`;
-        console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
-        reject(new Error(errorMsg));
-      });
-
-      // Abort
-      xhr.addEventListener('abort', () => {
-        const errorMsg = 'Upload cancelado';
-        console.error(`[Upload] ✗ ${file.name} - ${errorMsg}`);
-        reject(new Error(errorMsg));
-      });
-
-      // Start upload
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      
-      try {
-        xhr.send(file);
-      } catch (error) {
-        console.error(`[Upload] ✗ ${file.name} - Erro ao enviar:`, error);
-        reject(error);
-      }
+      xhr.timeout = 300000;
+      xhr.send(file);
     });
   },
 
@@ -1389,10 +1335,7 @@ const Drive = {
   }
 };
 
-// ============================================
-// SOBRESCREVER AUTH PARA DRIVE
-// ============================================
-
+// Sobrescrever showCorrectScreen do Auth
 Auth.showCorrectScreen = function() {
   const loginScreen = document.getElementById('login-screen');
   const driveSystem = document.getElementById('drive-system');
@@ -1410,8 +1353,5 @@ Auth.showCorrectScreen = function() {
   }
 };
 
-// ============================================
-// INICIALIZAR QUANDO DOM CARREGAR
-// ============================================
-
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
