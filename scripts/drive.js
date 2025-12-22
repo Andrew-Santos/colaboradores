@@ -17,6 +17,11 @@ const Drive = {
   // Configurações de upload otimizadas
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
+  
+  CHUNK_SIZE: 50 * 1024 * 1024, // 50MB por chunk
+  MAX_RETRIES: 3,
+  RETRY_DELAY: 2000,
+  
   uploadQueue: [],
   activeUploads: 0,
   uploadStats: {
@@ -1172,109 +1177,142 @@ const Drive = {
     const timestamp = Date.now();
     const fileName = `${folderPath}/${timestamp}-${index}.${ext}`;
 
-    // Marcar como fazendo upload
-    Notificacao.multiProgress.setFileUploading(index);
-
-    // Extrair metadados
-    let metadata = isVideo 
-      ? await this.extractVideoMetadata(file) 
-      : await this.extractImageMetadata(file);
-    
-    const captureDate = this.extractCaptureDate(file);
-
-    // Gerar URL de upload
-    const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
-    if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
-
-    // Upload do arquivo principal com callback de progresso
-    let lastTime = Date.now();
-    let lastLoaded = 0;
-    let speeds = [];
-
-    await this.uploadToR2WithProgress(file, urlResult.uploadUrl, (loaded) => {
-      const now = Date.now();
-      const timeDiff = (now - lastTime) / 1000;
-      const bytesDiff = loaded - lastLoaded;
-      
-      if (timeDiff > 0) {
-        const speed = bytesDiff / timeDiff;
-        speeds.push(speed);
-        if (speeds.length > 5) speeds.shift();
-      }
-      
-      const avgSpeed = speeds.length > 0 
-        ? speeds.reduce((a, b) => a + b, 0) / speeds.length 
-        : 0;
-      
-      lastTime = now;
-      lastLoaded = loaded;
-      
-      Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
-    });
-
-    // Marcar como processando (gerando thumbnail)
-    Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
-
-    // Gerar e fazer upload do thumbnail
-    let thumbnailUrl = null;
     try {
-      const thumbnailBlob = isVideo 
-        ? await this.generateVideoThumbnail(file)
-        : await this.generateImageThumbnail(file);
+      // Marcar como fazendo upload
+      Notificacao.multiProgress.setFileUploading(index);
+
+      // Extrair metadados (fazer ANTES do upload para não bloquear)
+      let metadata = isVideo 
+        ? await this.extractVideoMetadata(file) 
+        : await this.extractImageMetadata(file);
       
-      if (thumbnailBlob) {
-        const thumbFileName = `${folderPath}/thumb_${timestamp}-${index}.jpg`;
-        const thumbUrlResult = await window.r2API.generateUploadUrl(
-          thumbFileName, 
-          'image/jpeg', 
-          thumbnailBlob.size
-        );
-        
-        if (thumbUrlResult.success) {
-          await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl);
-          thumbnailUrl = thumbUrlResult.publicUrl;
-        }
-      }
-    } catch (thumbError) {
-      console.warn('[Drive] Erro ao gerar thumbnail:', thumbError);
+      const captureDate = this.extractCaptureDate(file);
+
+      // Gerar URL de upload
+      const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
+      if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
+
+      // UPLOAD COM RETRY E TIMEOUT ADAPTATIVO
+      await this.uploadToR2WithRetry(file, urlResult.uploadUrl, index);
+
+      // Gerar thumbnail APÓS upload principal
+      Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
+      let thumbnailUrl = await this.generateAndUploadThumbnail(file, folderPath, timestamp, index, isVideo);
+      
+      // Salvar no banco
+      Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
+      await window.driveAPI.saveFile({
+        clientId: this.selectedClient.id,
+        folderId: this.currentFolder,
+        path: fileName,
+        name: file.name,
+        urlMedia: urlResult.publicUrl,
+        urlThumbnail: thumbnailUrl,
+        fileType: isVideo ? 'video' : 'image',
+        mimeType: file.type,
+        fileSizeKb: Math.round(file.size / 1024),
+        dimensions: metadata.dimensions || null,
+        duration: metadata.duration || null,
+        dataDeCaptura: captureDate
+      });
+
+      Notificacao.multiProgress.setFileCompleted(index);
+      
+    } catch (error) {
+      console.error(`[Drive] Erro no upload de ${file.name}:`, error);
+      Notificacao.multiProgress.setFileError(index, error.message);
+      throw error;
     }
-    
-    // Marcar como processando (salvando no banco)
-    Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
-
-    // Salvar registro no banco
-    await window.driveAPI.saveFile({
-      clientId: this.selectedClient.id,
-      folderId: this.currentFolder,
-      path: fileName,
-      name: file.name,
-      urlMedia: urlResult.publicUrl,
-      urlThumbnail: thumbnailUrl,
-      fileType: isVideo ? 'video' : 'image',
-      mimeType: file.type,
-      fileSizeKb: Math.round(file.size / 1024),
-      dimensions: metadata.dimensions || null,
-      duration: metadata.duration || null,
-      dataDeCaptura: captureDate
-    });
-
-    // Marcar como concluído
-    Notificacao.multiProgress.setFileCompleted(index);
   },
 
-  uploadToR2WithProgress(file, uploadUrl, onProgress = null) {
+  // NOVA FUNÇÃO: Upload com Retry e Timeout Adaptativo
+  async uploadToR2WithRetry(file, uploadUrl, index, retryCount = 0) {
+    try {
+      // Calcular timeout baseado no tamanho do arquivo
+      // Mínimo 10 min, adicionar 5 min por GB
+      const timeoutMs = Math.max(
+        10 * 60 * 1000, // 10 minutos mínimo
+        (file.size / (1024 * 1024 * 1024)) * 5 * 60 * 1000 // 5 min por GB
+      );
+
+      await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, (loaded) => {
+        // Callback de progresso
+        const speeds = this.uploadStats.speeds || [];
+        const now = Date.now();
+        
+        if (this.lastProgressUpdate) {
+          const timeDiff = (now - this.lastProgressUpdate.time) / 1000;
+          const bytesDiff = loaded - this.lastProgressUpdate.loaded;
+          
+          if (timeDiff > 0.5) { // Atualizar a cada 500ms
+            const speed = bytesDiff / timeDiff;
+            speeds.push(speed);
+            if (speeds.length > 10) speeds.shift(); // Manter últimas 10 medições
+            
+            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+            Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
+            
+            this.lastProgressUpdate = { time: now, loaded };
+          }
+        } else {
+          this.lastProgressUpdate = { time: now, loaded };
+        }
+        
+        this.uploadStats.speeds = speeds;
+      });
+
+      // Upload bem-sucedido, limpar estado
+      this.lastProgressUpdate = null;
+      
+    } catch (error) {
+      // Retry logic
+      if (retryCount < this.MAX_RETRIES) {
+        const delay = this.RETRY_DELAY * Math.pow(2, retryCount); // Exponential backoff
+        console.warn(`[Drive] Tentativa ${retryCount + 1}/${this.MAX_RETRIES} falhou. Tentando novamente em ${delay}ms...`);
+        
+        Notificacao.multiProgress.setFileProcessing(
+          index, 
+          `Erro: Tentando novamente (${retryCount + 1}/${this.MAX_RETRIES})...`
+        );
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return await this.uploadToR2WithRetry(file, uploadUrl, index, retryCount + 1);
+      }
+      
+      throw new Error(`Upload falhou após ${this.MAX_RETRIES} tentativas: ${error.message}`);
+    }
+  },
+
+  // FUNÇÃO MELHORADA: Upload com Timeout Adaptativo
+  uploadToR2WithProgress(file, uploadUrl, timeoutMs, onProgress = null) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let lastProgressTime = Date.now();
+      let uploadStalled = false;
+
+      // Monitorar progresso para detectar travamento
+      const stallCheckInterval = setInterval(() => {
+        const now = Date.now();
+        if (now - lastProgressTime > 30000) { // 30s sem progresso
+          uploadStalled = true;
+          clearInterval(stallCheckInterval);
+          xhr.abort();
+          reject(new Error('Upload travado - sem progresso por 30 segundos'));
+        }
+      }, 5000); // Verificar a cada 5 segundos
 
       if (onProgress) {
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
+            lastProgressTime = Date.now();
             onProgress(e.loaded);
           }
         });
       }
 
       xhr.addEventListener('load', () => {
+        clearInterval(stallCheckInterval);
+        
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve();
         } else {
@@ -1282,14 +1320,146 @@ const Drive = {
         }
       });
 
-      xhr.addEventListener('error', () => reject(new Error('Erro de rede')));
-      xhr.addEventListener('timeout', () => reject(new Error('Timeout')));
+      xhr.addEventListener('error', () => {
+        clearInterval(stallCheckInterval);
+        reject(new Error('Erro de rede durante upload'));
+      });
+
+      xhr.addEventListener('timeout', () => {
+        clearInterval(stallCheckInterval);
+        reject(new Error(`Timeout após ${Math.round(timeoutMs / 1000)}s`));
+      });
+
+      xhr.addEventListener('abort', () => {
+        clearInterval(stallCheckInterval);
+        if (uploadStalled) {
+          reject(new Error('Upload abortado - sem progresso'));
+        } else {
+          reject(new Error('Upload cancelado'));
+        }
+      });
 
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.timeout = 300000;
-      xhr.send(file);
+      xhr.timeout = timeoutMs;
+      
+      try {
+        xhr.send(file);
+      } catch (error) {
+        clearInterval(stallCheckInterval);
+        reject(new Error(`Erro ao enviar: ${error.message}`));
+      }
     });
+  },
+
+  // NOVA FUNÇÃO: Gerar e fazer upload de thumbnail separadamente
+  async generateAndUploadThumbnail(file, folderPath, timestamp, index, isVideo) {
+    try {
+      const thumbnailBlob = isVideo 
+        ? await this.generateVideoThumbnail(file)
+        : await this.generateImageThumbnail(file);
+      
+      if (!thumbnailBlob) return null;
+
+      const thumbFileName = `${folderPath}/thumb_${timestamp}-${index}.jpg`;
+      const thumbUrlResult = await window.r2API.generateUploadUrl(
+        thumbFileName, 
+        'image/jpeg', 
+        thumbnailBlob.size
+      );
+      
+      if (!thumbUrlResult.success) {
+        console.warn('[Drive] Erro ao gerar URL do thumbnail');
+        return null;
+      }
+
+      // Upload do thumbnail com timeout menor (é pequeno)
+      await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl, 60000);
+      return thumbUrlResult.publicUrl;
+      
+    } catch (error) {
+      console.warn('[Drive] Erro ao gerar/enviar thumbnail:', error);
+      return null; // Não falhar o upload principal por causa do thumbnail
+    }
+  },
+
+  // AJUSTAR: uploadFiles para arquivos grandes
+  async uploadFiles(files) {
+    if (!this.selectedClient) {
+      Notificacao.show('Selecione um cliente primeiro', 'warning');
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'];
+    
+    for (const file of files) {
+      if (!allowedTypes.includes(file.type)) {
+        Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
+        return;
+      }
+      if (file.size > 5000 * 1024 * 1024) { // 5GB
+        Notificacao.show(`Arquivo muito grande (max 5GB): ${file.name}`, 'warning');
+        return;
+      }
+    }
+
+    try {
+      const folderPath = this.currentFolder 
+        ? `drive/client-${this.selectedClient.id}/folder-${this.currentFolder}`
+        : `drive/client-${this.selectedClient.id}`;
+
+      // Verificar se há arquivos grandes (>500MB)
+      const hasLargeFiles = files.some(f => f.size > 500 * 1024 * 1024);
+      
+      if (hasLargeFiles) {
+        // REDUZIR uploads simultâneos para arquivos grandes
+        this.MAX_CONCURRENT_UPLOADS = 2;
+        Notificacao.show('Detectados arquivos grandes. Upload pode demorar...', 'info');
+      }
+
+      this.uploadQueue = files.map((file, index) => ({
+        file,
+        index,
+        folderPath,
+        status: 'pending',
+        size: file.size,
+        name: file.name,
+        type: file.type
+      }));
+
+      Notificacao.multiProgress.show(this.uploadQueue);
+
+      this.activeUploads = 0;
+      this.uploadStats.speeds = [];
+
+      const uploadPromises = [];
+      const concurrency = hasLargeFiles ? 2 : this.MAX_CONCURRENT_UPLOADS;
+      
+      for (let i = 0; i < concurrency; i++) {
+        uploadPromises.push(this.processUploadQueue());
+      }
+
+      await Promise.all(uploadPromises);
+
+      setTimeout(async () => {
+        Notificacao.multiProgress.hide();
+        Notificacao.show(`${files.length} arquivo(s) enviado(s)!`, 'success');
+        
+        await this.loadClientsStorage();
+        this.renderClientList();
+        document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
+      }, 2000);
+      
+      await this.loadFolderContents();
+      
+    } catch (error) {
+      console.error('[Drive] Erro no upload:', error);
+      Notificacao.multiProgress.hide();
+      Notificacao.show('Erro no upload: ' + error.message, 'error');
+    } finally {
+      // Restaurar concorrência padrão
+      this.MAX_CONCURRENT_UPLOADS = 10;
+    }
   },
 
   async confirmDelete(type, id) {
@@ -1354,5 +1524,6 @@ Auth.showCorrectScreen = function() {
 };
 
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
 
 
