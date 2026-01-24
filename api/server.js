@@ -444,7 +444,6 @@ app.get('/api/drive/contents', verifyToken, async (req, res) => {
   }
 });
 
-// Salvar arquivo (sem pasta)
 app.post('/api/drive/file', verifyToken, async (req, res) => {
   try {
     const { 
@@ -452,7 +451,10 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
       dimensions, duration, fileType, mimeType, fileSizeKb, dataDeCaptura 
     } = req.body;
 
+    console.log('[Drive File] Recebendo:', { clientId, path, name, fileType, fileSizeKb });
+
     if (!clientId || !path || !name || !urlMedia) {
+      console.error('[Drive File] Dados incompletos:', req.body);
       return res.status(400).json({ 
         success: false, 
         error: 'Dados incompletos' 
@@ -467,18 +469,20 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
     }
 
     const fileData = {
-      id_client: clientId,
-      path,
-      name,
+      id_client: parseInt(clientId),
+      path: path,
+      name: name,
       url_media: urlMedia,
       url_thumbnail: urlThumbnail || null,
       dimensions: dimensions || null,
-      duration: duration || null,
-      file_type: fileType,
-      mime_type: mimeType,
-      file_size_kb: fileSizeKb,
+      duration: duration ? parseFloat(duration) : null,
+      file_type: fileType || 'image',
+      mime_type: mimeType || 'image/jpeg',
+      file_size_kb: fileSizeKb ? parseInt(fileSizeKb) : 0,
       data_de_captura: dataDeCaptura || null
     };
+
+    console.log('[Drive File] Salvando:', fileData);
 
     const { data, error } = await supabase
       .from('drive_files')
@@ -486,7 +490,12 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Drive File] Erro Supabase:', error);
+      throw error;
+    }
+
+    console.log('[Drive File] Arquivo salvo com sucesso:', data.id);
 
     res.json({ 
       success: true, 
@@ -494,10 +503,11 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Drive] Erro:', error);
+    console.error('[Drive] Erro ao salvar arquivo:', error.message);
+    console.error('[Drive] Stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      error: 'Erro ao salvar arquivo' 
+      error: error.message || 'Erro ao salvar arquivo' 
     });
   }
 });
@@ -871,3 +881,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
+
