@@ -93,58 +93,6 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// ============ FUNÇÕES AUXILIARES DO DRIVE ============
-
-async function getAllFilesFromFolder(folderId) {
-  const allFiles = [];
-  
-  const { data: files } = await supabase
-    .from('drive_files')
-    .select('path')
-    .eq('id_folders', folderId);
-  
-  if (files) {
-    allFiles.push(...files.map(f => f.path).filter(p => p));
-  }
-  
-  const { data: subfolders } = await supabase
-    .from('drive_folders')
-    .select('id')
-    .eq('id_parent', folderId);
-  
-  if (subfolders) {
-    for (const subfolder of subfolders) {
-      const subFiles = await getAllFilesFromFolder(subfolder.id);
-      allFiles.push(...subFiles);
-    }
-  }
-  
-  return allFiles;
-}
-
-async function deleteFolderRecursive(folderId) {
-  const { data: subfolders } = await supabase
-    .from('drive_folders')
-    .select('id')
-    .eq('id_parent', folderId);
-  
-  if (subfolders && subfolders.length > 0) {
-    for (const subfolder of subfolders) {
-      await deleteFolderRecursive(subfolder.id);
-    }
-  }
-  
-  await supabase
-    .from('drive_files')
-    .delete()
-    .eq('id_folders', folderId);
-  
-  await supabase
-    .from('drive_folders')
-    .delete()
-    .eq('id', folderId);
-}
-
 // ============ ROTAS DE AUTENTICAÇÃO ============
 
 app.post('/auth/login', async (req, res) => {
@@ -404,9 +352,9 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
   }
 });
 
-// ============ ROTAS DO DRIVE ============
+// ============ ROTAS DO DRIVE (SIMPLIFICADAS - SEM PASTAS) ============
 
-// 🆕 NOVO ENDPOINT - Storage Usage
+// Storage Usage
 app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
   try {
     if (!supabase) {
@@ -416,14 +364,12 @@ app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
       });
     }
 
-    // Buscar todos os arquivos com id_client e file_size_kb
     const { data, error } = await supabase
       .from('drive_files')
       .select('id_client, file_size_kb');
 
     if (error) throw error;
 
-    // Agrupar e somar o tamanho por cliente
     const storageByClient = {};
     
     if (data && data.length > 0) {
@@ -437,7 +383,6 @@ app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
       });
     }
 
-    // Converter para array no formato esperado
     const result = Object.entries(storageByClient).map(([id_client, total_size_kb]) => ({
       id_client: parseInt(id_client),
       total_size_kb
@@ -457,9 +402,10 @@ app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
   }
 });
 
+// Listar arquivos do cliente (sem pastas)
 app.get('/api/drive/contents', verifyToken, async (req, res) => {
   try {
-    const { clientId, folderId } = req.query;
+    const { clientId } = req.query;
 
     if (!clientId) {
       return res.status(400).json({ 
@@ -475,41 +421,17 @@ app.get('/api/drive/contents', verifyToken, async (req, res) => {
       });
     }
 
-    let foldersQuery = supabase
-      .from('drive_folders')
-      .select('*')
-      .eq('id_client', clientId)
-      .order('name', { ascending: true });
-
-    if (folderId) {
-      foldersQuery = foldersQuery.eq('id_parent', folderId);
-    } else {
-      foldersQuery = foldersQuery.is('id_parent', null);
-    }
-
-    const { data: folders, error: foldersError } = await foldersQuery;
-    
-    if (foldersError) throw foldersError;
-
-    let filesQuery = supabase
+    // Buscar apenas arquivos do cliente
+    const { data: files, error: filesError } = await supabase
       .from('drive_files')
       .select('*')
       .eq('id_client', clientId)
       .order('created_at', { ascending: false });
 
-    if (folderId) {
-      filesQuery = filesQuery.eq('id_folders', folderId);
-    } else {
-      filesQuery = filesQuery.is('id_folders', null);
-    }
-
-    const { data: files, error: filesError } = await filesQuery;
-    
     if (filesError) throw filesError;
 
     res.json({
       success: true,
-      folders: folders || [],
       files: files || []
     });
 
@@ -522,138 +444,11 @@ app.get('/api/drive/contents', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/drive/folder', verifyToken, async (req, res) => {
-  try {
-    const { name, clientId, parentId } = req.body;
-
-    if (!name || !clientId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Nome e cliente obrigatórios' 
-      });
-    }
-
-    if (!supabase) {
-      return res.status(500).json({ 
-        success: false,
-        error: 'Supabase não disponível' 
-      });
-    }
-
-    let path = `client-${clientId}`;
-    
-    if (parentId) {
-      const { data: parent } = await supabase
-        .from('drive_folders')
-        .select('path')
-        .eq('id', parentId)
-        .single();
-      
-      if (parent) {
-        path = parent.path;
-      }
-    }
-    
-    path += `/${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
-
-    const folderData = {
-      name,
-      id_client: clientId,
-      id_parent: parentId || null,
-      path
-    };
-
-    const { data, error } = await supabase
-      .from('drive_folders')
-      .insert([folderData])
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    res.json({ 
-      success: true, 
-      folder: data 
-    });
-
-  } catch (error) {
-    console.error('[Drive] Erro:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao criar pasta' 
-    });
-  }
-});
-
-app.delete('/api/drive/folder/:folderId', verifyToken, async (req, res) => {
-  try {
-    const { folderId } = req.params;
-
-    if (!supabase) {
-      return res.status(500).json({ 
-        success: false,
-        error: 'Supabase não disponível' 
-      });
-    }
-
-    const deletedFiles = await getAllFilesFromFolder(folderId);
-    await deleteFolderRecursive(folderId);
-
-    res.json({ 
-      success: true,
-      deletedFiles: deletedFiles
-    });
-
-  } catch (error) {
-    console.error('[Drive] Erro:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao deletar pasta' 
-    });
-  }
-});
-
-app.patch('/api/drive/folder/:folderId/move', verifyToken, async (req, res) => {
-  try {
-    const { folderId } = req.params;
-    const { targetFolderId } = req.body;
-
-    if (!supabase) {
-      return res.status(500).json({ 
-        success: false,
-        error: 'Supabase não disponível' 
-      });
-    }
-
-    if (folderId === targetFolderId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Não é possível mover pasta para dentro dela mesma'
-      });
-    }
-
-    const { error } = await supabase
-      .from('drive_folders')
-      .update({ id_parent: targetFolderId || null })
-      .eq('id', folderId);
-
-    if (error) throw error;
-
-    res.json({ success: true });
-
-  } catch (error) {
-    console.error('[Drive] Erro:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao mover pasta' 
-    });
-  }
-});
-
+// Salvar arquivo (sem pasta)
 app.post('/api/drive/file', verifyToken, async (req, res) => {
   try {
     const { 
-      clientId, folderId, path, name, urlMedia, urlThumbnail, 
+      clientId, path, name, urlMedia, urlThumbnail, 
       dimensions, duration, fileType, mimeType, fileSizeKb, dataDeCaptura 
     } = req.body;
 
@@ -673,7 +468,6 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
 
     const fileData = {
       id_client: clientId,
-      id_folders: folderId || null,
       path,
       name,
       url_media: urlMedia,
@@ -708,6 +502,7 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
   }
 });
 
+// Deletar arquivo
 app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
@@ -753,39 +548,8 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
   }
 });
 
-app.patch('/api/drive/file/:fileId/move', verifyToken, async (req, res) => {
-  try {
-    const { fileId } = req.params;
-    const { targetFolderId } = req.body;
-
-    if (!supabase) {
-      return res.status(500).json({ 
-        success: false,
-        error: 'Supabase não disponível' 
-      });
-    }
-
-    const { error } = await supabase
-      .from('drive_files')
-      .update({ id_folders: targetFolderId || null })
-      .eq('id', fileId);
-
-    if (error) throw error;
-
-    res.json({ success: true });
-
-  } catch (error) {
-    console.error('[Drive] Erro:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao mover arquivo' 
-    });
-  }
-});
 // ============ ROTAS DO DESIGNER ============
-// Adicione estas rotas no seu api/server.js, antes do health check
 
-// Listar solicitações pendentes/recusadas
 app.get('/api/designer/requests/pending', verifyToken, async (req, res) => {
   try {
     if (!supabase) {
@@ -824,7 +588,6 @@ app.get('/api/designer/requests/pending', verifyToken, async (req, res) => {
   }
 });
 
-// Listar solicitações aprovadas (com filtro de mês)
 app.get('/api/designer/requests/approved', verifyToken, async (req, res) => {
   try {
     const { month, year } = req.query;
@@ -849,7 +612,6 @@ app.get('/api/designer/requests/approved', verifyToken, async (req, res) => {
       .eq('status', 'APROVADO')
       .order('created_at', { ascending: false });
 
-    // Filtro por mês/ano
     if (month && year) {
       const startDate = new Date(year, month - 1, 1).toISOString();
       const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
@@ -877,7 +639,6 @@ app.get('/api/designer/requests/approved', verifyToken, async (req, res) => {
   }
 });
 
-// Buscar detalhes de uma solicitação
 app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -889,7 +650,6 @@ app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
       });
     }
 
-    // Buscar a solicitação
     const { data: request, error: requestError } = await supabase
       .from('designer_request')
       .select(`
@@ -906,7 +666,6 @@ app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
 
     if (requestError) throw requestError;
 
-    // Buscar as mídias
     const { data: medias, error: mediasError } = await supabase
       .from('designer_media')
       .select('*')
@@ -915,7 +674,6 @@ app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
 
     if (mediasError) throw mediasError;
 
-    // Buscar as mensagens
     const { data: messages, error: messagesError } = await supabase
       .from('designer_mensagem')
       .select('*')
@@ -940,7 +698,6 @@ app.get('/api/designer/request/:requestId', verifyToken, async (req, res) => {
   }
 });
 
-// Upload de mídias do designer
 app.post('/api/designer/upload-media', verifyToken, async (req, res) => {
   try {
     const { requestId, mediaUrls } = req.body;
@@ -959,7 +716,6 @@ app.post('/api/designer/upload-media', verifyToken, async (req, res) => {
       });
     }
 
-    // Inserir mídias
     const mediaData = mediaUrls.map(url => ({
       id_request: requestId,
       url_media: url,
@@ -973,7 +729,6 @@ app.post('/api/designer/upload-media', verifyToken, async (req, res) => {
 
     if (mediaError) throw mediaError;
 
-    // Atualizar status da solicitação para EM_ANDAMENTO
     const { error: updateError } = await supabase
       .from('designer_request')
       .update({ status: 'EM_ANDAMENTO' })
@@ -996,7 +751,6 @@ app.post('/api/designer/upload-media', verifyToken, async (req, res) => {
   }
 });
 
-// Adicionar mensagem
 app.post('/api/designer/add-message', verifyToken, async (req, res) => {
   try {
     const { requestId, type, content } = req.body;
@@ -1017,9 +771,9 @@ app.post('/api/designer/add-message', verifyToken, async (req, res) => {
 
     const messageData = {
       id_request: requestId,
-      type: type, // 'text' ou 'media'
+      type: type,
       url_ou_text: content,
-      admin_or_users: 'users' // Designer
+      admin_or_users: 'users'
     };
 
     const { data, error } = await supabase
@@ -1044,7 +798,6 @@ app.post('/api/designer/add-message', verifyToken, async (req, res) => {
   }
 });
 
-// Deletar mídia
 app.delete('/api/designer/media/:mediaId', verifyToken, async (req, res) => {
   try {
     const { mediaId } = req.params;
@@ -1056,7 +809,6 @@ app.delete('/api/designer/media/:mediaId', verifyToken, async (req, res) => {
       });
     }
 
-    // Buscar mídia para pegar a URL
     const { data: media, error: fetchError } = await supabase
       .from('designer_media')
       .select('url_media')
@@ -1070,7 +822,6 @@ app.delete('/api/designer/media/:mediaId', verifyToken, async (req, res) => {
       });
     }
 
-    // Deletar do banco
     const { error } = await supabase
       .from('designer_media')
       .delete()
@@ -1118,6 +869,5 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`🔗 http://localhost:${PORT}\n`);
   });
 }
-
 
 module.exports = app;
