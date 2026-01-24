@@ -1,4 +1,8 @@
+// ==================== DRIVE.JS - PARTE 1/3 ====================
+// Estrutura inicial, configurações e event listeners
+
 const Drive = {
+  // ==================== PROPRIEDADES ====================
   clients: [],
   clientsStorage: {},
   selectedClient: null,
@@ -29,6 +33,7 @@ const Drive = {
     speeds: []
   },
 
+  // ==================== INICIALIZAÇÃO ====================
   async init() {
     VANTA.WAVES({
       el: "#bg", 
@@ -58,6 +63,7 @@ const Drive = {
     this.setupEventListeners();
   },
 
+  // ==================== EVENT LISTENERS ====================
   setupEventListeners() {
     // Login
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -191,6 +197,7 @@ const Drive = {
     document.addEventListener('touchmove', () => clearTimeout(longPressTimer), { passive: true });
   },
 
+  // ==================== HANDLERS DE INTERAÇÃO ====================
   handleLongPress(item) {
     const id = item.dataset.id;
     const key = `file-${id}`;
@@ -324,8 +331,14 @@ const Drive = {
 
     const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
     for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
-  },
+  }
 
+  // FIM DA PARTE 1/3
+  // OS MÉTODOS CONTINUAM NA PARTE 2
+  ,
+
+  // ==================== PARTE 2/3 - CARREGAMENTO E RENDERIZAÇÃO ====================
+  
   async loadClients() {
     try {
       const result = await window.supabaseAPI.getClients();
@@ -370,11 +383,7 @@ const Drive = {
     if (percentage >= 90) return 'danger';
     if (percentage >= 70) return 'warning';
     return '';
-  }
-};
-
-// PARTE 2/3 - RENDERIZAÇÃO E VISUALIZAÇÃO
-// Continue a partir do objeto Drive da Parte 1
+  },
 
   renderClientList() {
     const container = document.getElementById('client-list');
@@ -419,7 +428,6 @@ const Drive = {
 
     document.getElementById('drive-toolbar').style.display = 'flex';
     
-    // Breadcrumb simplificado (sem navegação de pastas)
     const breadcrumb = document.getElementById('breadcrumb');
     if (breadcrumb) {
       breadcrumb.innerHTML = `
@@ -437,7 +445,6 @@ const Drive = {
       const content = document.getElementById('drive-content');
       content.innerHTML = '<div class="empty-state"><i class="ph ph-spinner"></i><p>Carregando...</p></div>';
 
-      // Busca arquivos sem folderId (todos os arquivos do cliente)
       const result = await window.driveAPI.getFolderContents(this.selectedClient.id);
       if (!result.success) throw new Error(result.error);
 
@@ -675,6 +682,41 @@ const Drive = {
     document.getElementById('modal-preview').classList.add('show');
   },
 
+  async confirmDelete(id) {
+    if (!confirm('Excluir este arquivo?')) return;
+
+    try {
+      Notificacao.show('Excluindo...', 'info');
+      
+      const file = this.files.find(f => String(f.id) === String(id));
+      const filesToDelete = [];
+      
+      if (file) {
+        filesToDelete.push(file.path);
+        if (file.url_thumbnail) {
+          const thumbPath = file.url_thumbnail.split('.com/')[1];
+          if (thumbPath) filesToDelete.push(thumbPath);
+        }
+        const result = await window.driveAPI.deleteFile(id);
+        if (!result.success) throw new Error(result.error);
+      }
+
+      if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
+
+      Notificacao.show('Excluído!', 'success');
+      this.clearSelection();
+      
+      await this.loadClientsStorage();
+      this.renderClientList();
+      document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
+      
+      await this.loadFiles();
+    } catch (error) {
+      console.error('[Drive] Erro:', error);
+      Notificacao.show('Erro: ' + error.message, 'error');
+    }
+  },
+
   async deleteSelected() {
     const items = Array.from(this.selectedItems);
     if (items.length === 0) return;
@@ -793,48 +835,14 @@ const Drive = {
       console.error('[Drive] Erro ao criar ZIP:', error);
       Notificacao.show('Erro ao criar arquivo ZIP', 'error');
     }
-  },
-
-  async confirmDelete(id) {
-    if (!confirm('Excluir este arquivo?')) return;
-
-    try {
-      Notificacao.show('Excluindo...', 'info');
-      
-      const file = this.files.find(f => String(f.id) === String(id));
-      const filesToDelete = [];
-      
-      if (file) {
-        filesToDelete.push(file.path);
-        if (file.url_thumbnail) {
-          const thumbPath = file.url_thumbnail.split('.com/')[1];
-          if (thumbPath) filesToDelete.push(thumbPath);
-        }
-        const result = await window.driveAPI.deleteFile(id);
-        if (!result.success) throw new Error(result.error);
-      }
-
-      if (filesToDelete.length > 0) await window.r2API.deleteFiles(filesToDelete);
-
-      Notificacao.show('Excluído!', 'success');
-      this.clearSelection();
-      
-      await this.loadClientsStorage();
-      this.renderClientList();
-      document.querySelector(`.client-item[data-id="${this.selectedClient.id}"]`)?.classList.add('active');
-      
-      await this.loadFiles();
-    } catch (error) {
-      console.error('[Drive] Erro:', error);
-      Notificacao.show('Erro: ' + error.message, 'error');
-    }
   }
 
-// Continua na Parte 3...
+  // FIM DA PARTE 2/3
+  // CONTINUA NA PARTE 3 COM MÉTODOS DE UPLOAD
+  ,
 
-// PARTE 3/3 - UPLOAD E FINALIZAÇÃO
-// Continue a partir das Partes 1 e 2
-
+  // ==================== PARTE 3/3 - UPLOAD E FINALIZAÇÃO ====================
+  
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
       const img = new Image();
@@ -1072,7 +1080,6 @@ const Drive = {
       
       Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
       
-      // Salvando arquivo SEM folderId
       await window.driveAPI.saveFile({
         clientId: this.selectedClient.id,
         path: fileName,
@@ -1235,7 +1242,9 @@ const Drive = {
   }
 };
 
-// Sobrescrever showCorrectScreen do Auth
+// ==================== FINALIZAÇÃO ====================
+
+// Sobrescrever showCorrectScreen do Auth para o Drive
 Auth.showCorrectScreen = function() {
   const loginScreen = document.getElementById('login-screen');
   const driveSystem = document.getElementById('drive-system');
