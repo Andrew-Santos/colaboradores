@@ -14,7 +14,6 @@ const Drive = {
   // Configurações de upload otimizadas
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
-  
   CHUNK_SIZE: 50 * 1024 * 1024,
   MAX_RETRIES: 3,
   RETRY_DELAY: 2000,
@@ -83,7 +82,7 @@ const Drive = {
       Notificacao.show('Logout realizado', 'info');
     });
 
-    // Remover botão de nova pasta (não é mais necessário)
+    // Remover botão de nova pasta (não existe mais)
     const btnNewFolder = document.getElementById('btn-new-folder');
     if (btnNewFolder) {
       btnNewFolder.style.display = 'none';
@@ -371,7 +370,11 @@ const Drive = {
     if (percentage >= 90) return 'danger';
     if (percentage >= 70) return 'warning';
     return '';
-  },
+  }
+};
+
+// PARTE 2/3 - RENDERIZAÇÃO E VISUALIZAÇÃO
+// Continue a partir do objeto Drive da Parte 1
 
   renderClientList() {
     const container = document.getElementById('client-list');
@@ -416,7 +419,7 @@ const Drive = {
 
     document.getElementById('drive-toolbar').style.display = 'flex';
     
-    // Remover breadcrumb (não há mais navegação de pastas)
+    // Breadcrumb simplificado (sem navegação de pastas)
     const breadcrumb = document.getElementById('breadcrumb');
     if (breadcrumb) {
       breadcrumb.innerHTML = `
@@ -434,7 +437,8 @@ const Drive = {
       const content = document.getElementById('drive-content');
       content.innerHTML = '<div class="empty-state"><i class="ph ph-spinner"></i><p>Carregando...</p></div>';
 
-      const result = await window.driveAPI.getFolderContents(this.selectedClient.id, null);
+      // Busca arquivos sem folderId (todos os arquivos do cliente)
+      const result = await window.driveAPI.getFolderContents(this.selectedClient.id);
       if (!result.success) throw new Error(result.error);
 
       this.files = result.files || [];
@@ -824,7 +828,12 @@ const Drive = {
       console.error('[Drive] Erro:', error);
       Notificacao.show('Erro: ' + error.message, 'error');
     }
-  },
+  }
+
+// Continua na Parte 3...
+
+// PARTE 3/3 - UPLOAD E FINALIZAÇÃO
+// Continue a partir das Partes 1 e 2
 
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
@@ -1062,9 +1071,10 @@ const Drive = {
       let thumbnailUrl = await this.generateAndUploadThumbnail(file, folderPath, timestamp, index, isVideo);
       
       Notificacao.multiProgress.setFileProcessing(index, 'Salvando...');
+      
+      // Salvando arquivo SEM folderId
       await window.driveAPI.saveFile({
         clientId: this.selectedClient.id,
-        folderId: null,
         path: fileName,
         name: file.name,
         urlMedia: urlResult.publicUrl,
@@ -1243,4 +1253,5 @@ Auth.showCorrectScreen = function() {
   }
 };
 
+// Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => Drive.init());
