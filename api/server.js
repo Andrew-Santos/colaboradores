@@ -517,6 +517,8 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
 
+    console.log('[Drive Delete] Deletando arquivo:', fileId);
+
     if (!supabase) {
       return res.status(500).json({ 
         success: false,
@@ -526,11 +528,12 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
 
     const { data: file, error: fetchError } = await supabase
       .from('drive_files')
-      .select('path')
+      .select('path, url_thumbnail')
       .eq('id', fileId)
       .single();
 
     if (fetchError) {
+      console.error('[Drive Delete] Arquivo não encontrado:', fetchError);
       return res.status(404).json({
         success: false,
         error: 'Arquivo não encontrado'
@@ -542,18 +545,31 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
       .delete()
       .eq('id', fileId);
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Drive Delete] Erro ao deletar:', error);
+      throw error;
+    }
+
+    const deletedFiles = [];
+    if (file.path) deletedFiles.push(file.path);
+    if (file.url_thumbnail) {
+      const thumbPath = file.url_thumbnail.split('.com/')[1];
+      if (thumbPath) deletedFiles.push(thumbPath);
+    }
+
+    console.log('[Drive Delete] Arquivos para deletar do R2:', deletedFiles);
 
     res.json({ 
       success: true,
-      deletedFiles: file.path ? [file.path] : []
+      deletedFiles: deletedFiles
     });
 
   } catch (error) {
-    console.error('[Drive] Erro:', error);
+    console.error('[Drive] Erro ao deletar arquivo:', error.message);
+    console.error('[Drive] Stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      error: 'Erro ao deletar arquivo' 
+      error: error.message || 'Erro ao deletar arquivo' 
     });
   }
 });
@@ -881,4 +897,5 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
+
 
