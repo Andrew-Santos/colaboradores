@@ -1109,7 +1109,7 @@ const Drive = {
       const fileSizeGB = file.size / (1024 * 1024 * 1024);
       const timeoutMs = Math.max(20 * 60 * 1000, fileSizeGB * 15 * 60 * 1000);
 
-      await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, index, task, (loaded) => {
+      await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, (loaded) => {
         // CORRIGIDO: Atualizar progresso individual do arquivo
         const oldProgress = this.uploadStats.fileProgress[index] || 0;
         this.uploadStats.fileProgress[index] = loaded;
@@ -1169,7 +1169,7 @@ const Drive = {
     }
   },
 
-  uploadToR2WithProgress(file, uploadUrl, timeoutMs, index, task, onProgress = null) {
+  uploadToR2WithProgress(file, uploadUrl, timeoutMs, onProgress = null) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       let lastProgressTime = Date.now();
