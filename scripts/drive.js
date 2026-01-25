@@ -1,4 +1,4 @@
-// ==================== DRIVE.JS - COMPLETO ====================
+// ==================== DRIVE.JS - PARTE 1/3 ====================
 // Estrutura inicial, configurações e event listeners
 
 const Drive = {
@@ -15,8 +15,8 @@ const Drive = {
   lastTapTime: 0,
   lastTapItem: null,
   
-  // Configurações de upload otimizadas para arquivos grandes
-  MAX_CONCURRENT_UPLOADS: 5, // ALTERADO: de 10 para 5 uploads simultâneos
+  // Configurações de upload otimizadas
+  MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
   CHUNK_SIZE: 50 * 1024 * 1024,
   MAX_RETRIES: 3,
@@ -30,8 +30,7 @@ const Drive = {
     totalBytes: 0,
     uploadedBytes: 0,
     startTime: 0,
-    speeds: [],
-    fileProgress: {} // NOVO: rastreia progresso individual de cada arquivo
+    speeds: []
   },
 
   // ==================== INICIALIZAÇÃO ====================
@@ -332,9 +331,13 @@ const Drive = {
 
     const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
     for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
-  },
+  }
 
-  // ==================== CARREGAMENTO E RENDERIZAÇÃO ====================
+  // FIM DA PARTE 1/3
+  // OS MÉTODOS CONTINUAM NA PARTE 2
+  ,
+
+  // ==================== PARTE 2/3 - CARREGAMENTO E RENDERIZAÇÃO ====================
   
   async loadClients() {
     try {
@@ -832,9 +835,13 @@ const Drive = {
       console.error('[Drive] Erro ao criar ZIP:', error);
       Notificacao.show('Erro ao criar arquivo ZIP', 'error');
     }
-  },
+  }
 
-  // ==================== UPLOAD E FINALIZAÇÃO ====================
+  // FIM DA PARTE 2/3
+  // CONTINUA NA PARTE 3 COM MÉTODOS DE UPLOAD
+  ,
+
+  // ==================== PARTE 3/3 - UPLOAD E FINALIZAÇÃO ====================
   
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
@@ -974,16 +981,12 @@ const Drive = {
     try {
       const folderPath = `drive/client-${this.selectedClient.id}`;
 
-      // NOVO: Resetar stats de upload completamente
-      this.uploadStats = {
-        totalFiles: files.length,
-        completedFiles: 0,
-        totalBytes: files.reduce((sum, f) => sum + f.size, 0),
-        uploadedBytes: 0,
-        startTime: Date.now(),
-        speeds: [],
-        fileProgress: {} // Rastreia progresso individual de cada arquivo
-      };
+      const hasLargeFiles = files.some(f => f.size > 500 * 1024 * 1024);
+      
+      if (hasLargeFiles) {
+        this.MAX_CONCURRENT_UPLOADS = 5;
+        Notificacao.show('Detectados arquivos grandes. Upload pode demorar...', 'info');
+      }
 
       this.uploadQueue = files.map((file, index) => ({
         file,
@@ -992,17 +995,16 @@ const Drive = {
         status: 'pending',
         size: file.size,
         name: file.name,
-        type: file.type,
-        uploadedBytes: 0 // NOVO: rastrear bytes enviados por arquivo
+        type: file.type
       }));
 
       Notificacao.multiProgress.show(this.uploadQueue);
 
       this.activeUploads = 0;
+      this.uploadStats.speeds = [];
 
       const uploadPromises = [];
-      // Sempre usar 5 uploads simultâneos agora
-      const concurrency = 5;
+      const concurrency = hasLargeFiles ? 2 : this.MAX_CONCURRENT_UPLOADS;
       
       for (let i = 0; i < concurrency; i++) {
         uploadPromises.push(this.processUploadQueue());
@@ -1025,6 +1027,8 @@ const Drive = {
       console.error('[Drive] Erro no upload:', error);
       Notificacao.multiProgress.hide();
       Notificacao.show('Erro no upload: ' + error.message, 'error');
+    } finally {
+      this.MAX_CONCURRENT_UPLOADS = 10;
     }
   },
 
@@ -1060,9 +1064,6 @@ const Drive = {
     try {
       Notificacao.multiProgress.setFileUploading(index);
 
-      // Inicializar progresso individual do arquivo
-      this.uploadStats.fileProgress[index] = 0;
-
       let metadata = isVideo 
         ? await this.extractVideoMetadata(file) 
         : await this.extractImageMetadata(file);
@@ -1072,7 +1073,7 @@ const Drive = {
       const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
       if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
 
-      await this.uploadToR2WithRetry(file, urlResult.uploadUrl, index, task);
+      await this.uploadToR2WithRetry(file, urlResult.uploadUrl, index);
 
       Notificacao.multiProgress.setFileProcessing(index, 'Gerando thumbnail...');
       let thumbnailUrl = await this.generateAndUploadThumbnail(file, folderPath, timestamp, index, isVideo);
@@ -1102,57 +1103,35 @@ const Drive = {
     }
   },
 
-  async uploadToR2WithRetry(file, uploadUrl, index, task, retryCount = 0) {
+  async uploadToR2WithRetry(file, uploadUrl, index, retryCount = 0) {
     try {
-      // ALTERADO: Timeout aumentado para arquivos grandes (até 2GB)
-      // Fórmula: mínimo 20 minutos OU (tamanho em GB * 15 minutos)
-      const fileSizeGB = file.size / (1024 * 1024 * 1024);
-      const timeoutMs = Math.max(20 * 60 * 1000, fileSizeGB * 15 * 60 * 1000);
+      const timeoutMs = Math.max(10 * 60 * 1000, (file.size / (1024 * 1024 * 1024)) * 5 * 60 * 1000);
 
       await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, (loaded) => {
-        // CORRIGIDO: Atualizar progresso individual do arquivo
-        const oldProgress = this.uploadStats.fileProgress[index] || 0;
-        this.uploadStats.fileProgress[index] = loaded;
-        
-        // Atualizar progresso total (subtrair antigo, adicionar novo)
-        this.uploadStats.uploadedBytes = this.uploadStats.uploadedBytes - oldProgress + loaded;
-        
-        // Atualizar bytes do task
-        task.uploadedBytes = loaded;
-        
-        // Calcular velocidade média
         const speeds = this.uploadStats.speeds || [];
         const now = Date.now();
         
-        if (this.lastProgressUpdate && this.lastProgressUpdate.index === index) {
+        if (this.lastProgressUpdate) {
           const timeDiff = (now - this.lastProgressUpdate.time) / 1000;
           const bytesDiff = loaded - this.lastProgressUpdate.loaded;
           
           if (timeDiff > 0.5) {
             const speed = bytesDiff / timeDiff;
             speeds.push(speed);
-            if (speeds.length > 20) speeds.shift(); // Manter últimas 20 medições
+            if (speeds.length > 10) speeds.shift();
             
             const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+            Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
             
-            // DEBUG: Log do progresso
-            console.log(`[Upload] Arquivo ${index}: ${((loaded / file.size) * 100).toFixed(1)}% - ${this.formatBytes(loaded)}/${this.formatBytes(file.size)} - ${this.formatSpeed(avgSpeed)}`);
-            
-            // Atualizar UI se a função existir
-            if (typeof Notificacao !== 'undefined' && Notificacao.multiProgress && Notificacao.multiProgress.updateFileProgress) {
-              Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
-            }
-            
-            this.lastProgressUpdate = { time: now, loaded, index };
+            this.lastProgressUpdate = { time: now, loaded };
           }
         } else {
-          this.lastProgressUpdate = { time: now, loaded, index };
+          this.lastProgressUpdate = { time: now, loaded };
         }
         
         this.uploadStats.speeds = speeds;
       });
 
-      // Limpar rastreamento ao concluir
       this.lastProgressUpdate = null;
       
     } catch (error) {
@@ -1162,14 +1141,8 @@ const Drive = {
         
         Notificacao.multiProgress.setFileProcessing(index, `Erro: Tentando novamente (${retryCount + 1}/${this.MAX_RETRIES})...`);
         
-        // NOVO: Resetar progresso do arquivo em caso de retry
-        const oldProgress = this.uploadStats.fileProgress[index] || 0;
-        this.uploadStats.uploadedBytes -= oldProgress;
-        this.uploadStats.fileProgress[index] = 0;
-        task.uploadedBytes = 0;
-        
         await new Promise(resolve => setTimeout(resolve, delay));
-        return await this.uploadToR2WithRetry(file, uploadUrl, index, task, retryCount + 1);
+        return await this.uploadToR2WithRetry(file, uploadUrl, index, retryCount + 1);
       }
       
       throw new Error(`Upload falhou após ${this.MAX_RETRIES} tentativas: ${error.message}`);
@@ -1180,31 +1153,22 @@ const Drive = {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       let lastProgressTime = Date.now();
-      let lastProgressLoaded = 0;
       let uploadStalled = false;
 
-      // MELHORADO: Detecção de travamento com base em progresso real
       const stallCheckInterval = setInterval(() => {
         const now = Date.now();
-        const timeSinceLastProgress = now - lastProgressTime;
-        
-        // Considerar travado se não houver progresso por 60 segundos (aumentado de 30s)
-        if (timeSinceLastProgress > 60000) {
+        if (now - lastProgressTime > 30000) {
           uploadStalled = true;
           clearInterval(stallCheckInterval);
           xhr.abort();
-          reject(new Error('Upload travado - sem progresso por 60 segundos'));
+          reject(new Error('Upload travado - sem progresso por 30 segundos'));
         }
-      }, 10000); // Verificar a cada 10 segundos
+      }, 5000);
 
       if (onProgress) {
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
-            // CORRIGIDO: Só atualizar lastProgressTime se houver progresso real
-            if (e.loaded > lastProgressLoaded) {
-              lastProgressTime = Date.now();
-              lastProgressLoaded = e.loaded;
-            }
+            lastProgressTime = Date.now();
             onProgress(e.loaded);
           }
         });
@@ -1214,10 +1178,6 @@ const Drive = {
         clearInterval(stallCheckInterval);
         
         if (xhr.status >= 200 && xhr.status < 300) {
-          // NOVO: Garantir que o progresso final seja 100%
-          if (onProgress) {
-            onProgress(file.size);
-          }
           resolve();
         } else {
           reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
@@ -1272,8 +1232,7 @@ const Drive = {
         return null;
       }
 
-      // Timeout de 2 minutos para thumbnail (geralmente pequeno)
-      await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl, 120000);
+      await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl, 60000);
       return thumbUrlResult.publicUrl;
       
     } catch (error) {
