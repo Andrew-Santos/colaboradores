@@ -1,4 +1,4 @@
-// ==================== DRIVE.JS - PARTE 1/3 ====================
+// ==================== DRIVE.JS - COMPLETO ====================
 // Estrutura inicial, configurações e event listeners
 
 const Drive = {
@@ -334,8 +334,8 @@ const Drive = {
     for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
   },
 
-// ==================== PARTE 2/3 - CARREGAMENTO E RENDERIZAÇÃO ====================
-
+  // ==================== CARREGAMENTO E RENDERIZAÇÃO ====================
+  
   async loadClients() {
     try {
       const result = await window.supabaseAPI.getClients();
@@ -832,13 +832,9 @@ const Drive = {
       console.error('[Drive] Erro ao criar ZIP:', error);
       Notificacao.show('Erro ao criar arquivo ZIP', 'error');
     }
-  }
+  },
 
-  // FIM DA PARTE 2/3
-
-// ==================== PARTE 3/3 - UPLOAD E FINALIZAÇÃO ====================
-  // CONTINUAÇÃO DO OBJETO Drive
-  ,
+  // ==================== UPLOAD E FINALIZAÇÃO ====================
   
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
@@ -1302,4 +1298,3 @@ Auth.showCorrectScreen = function() {
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => Drive.init());
-
