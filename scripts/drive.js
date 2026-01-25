@@ -1034,7 +1034,7 @@ Object.assign(Drive, {
       const hasLargeFiles = files.some(f => f.size > 500 * 1024 * 1024);
       
       if (hasLargeFiles) {
-        this.MAX_CONCURRENT_UPLOADS = 3;
+        this.MAX_CONCURRENT_UPLOADS = 5;
         Notificacao.show('Detectados arquivos grandes. Iniciando upload de até 3 arquivos simultâneos...', 'info');
       } else {
         Notificacao.show('Iniciando upload de até 5 arquivos simultâneos...', 'info');
@@ -1332,3 +1332,4 @@ document.addEventListener('DOMContentLoaded', () => Drive.init());
 
 // ==================== FIM DO DRIVE.JS ====================
 // Todas as 3 partes foram concluídas!
+
