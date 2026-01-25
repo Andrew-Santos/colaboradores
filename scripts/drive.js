@@ -880,7 +880,8 @@ Object.assign(Drive, {
 
 });
 
-// FIM DA PARTE 2/3// ==================== DRIVE.JS - PARTE 3/3 ====================
+// FIM DA PARTE 2/3
+// Continue para a Parte 3/3// ==================== DRIVE.JS - PARTE 3/3 ====================
 // UPLOAD, METADATA E FINALIZAÇÃO
 
 // Continuação do objeto Drive...
@@ -1167,44 +1168,29 @@ Object.assign(Drive, {
         (file.size / (1024 * 1024 * 1024)) * 15 * 60 * 1000 // 15 min por GB
       );
 
-      let lastReportedProgress = 0;
-
       await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, (loaded) => {
-        // Progresso sempre crescente - nunca diminui
-        if (loaded > lastReportedProgress) {
-          lastReportedProgress = loaded;
+        const speeds = this.uploadStats.speeds || [];
+        const now = Date.now();
+        
+        if (this.lastProgressUpdate) {
+          const timeDiff = (now - this.lastProgressUpdate.time) / 1000;
+          const bytesDiff = loaded - this.lastProgressUpdate.loaded;
           
-          const speeds = this.uploadStats.speeds || [];
-          const now = Date.now();
-          
-          if (this.lastProgressUpdate) {
-            const timeDiff = (now - this.lastProgressUpdate.time) / 1000;
-            const bytesDiff = loaded - this.lastProgressUpdate.loaded;
+          if (timeDiff > 0.5) {
+            const speed = bytesDiff / timeDiff;
+            speeds.push(speed);
+            if (speeds.length > 10) speeds.shift();
             
-            // Só atualiza velocidade se houve progresso real
-            if (timeDiff > 0.5 && bytesDiff > 0) {
-              const speed = bytesDiff / timeDiff;
-              speeds.push(speed);
-              
-              // Mantém últimas 20 medições para média mais estável
-              if (speeds.length > 20) speeds.shift();
-              
-              // Média ponderada dando mais peso às velocidades recentes
-              const avgSpeed = speeds.reduce((sum, s, i) => {
-                const weight = (i + 1) / speeds.length;
-                return sum + (s * weight);
-              }, 0) / speeds.reduce((sum, _, i) => sum + ((i + 1) / speeds.length), 0);
-              
-              Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
-              
-              this.lastProgressUpdate = { time: now, loaded };
-            }
-          } else {
+            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+            Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
+            
             this.lastProgressUpdate = { time: now, loaded };
           }
-          
-          this.uploadStats.speeds = speeds;
+        } else {
+          this.lastProgressUpdate = { time: now, loaded };
         }
+        
+        this.uploadStats.speeds = speeds;
       });
 
       this.lastProgressUpdate = null;
