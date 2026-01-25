@@ -1134,7 +1134,14 @@ const Drive = {
             if (speeds.length > 20) speeds.shift(); // Manter últimas 20 medições
             
             const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-            Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
+            
+            // DEBUG: Log do progresso
+            console.log(`[Upload] Arquivo ${index}: ${((loaded / file.size) * 100).toFixed(1)}% - ${this.formatBytes(loaded)}/${this.formatBytes(file.size)} - ${this.formatSpeed(avgSpeed)}`);
+            
+            // Atualizar UI se a função existir
+            if (typeof Notificacao !== 'undefined' && Notificacao.multiProgress && Notificacao.multiProgress.updateFileProgress) {
+              Notificacao.multiProgress.updateFileProgress(index, loaded, file.size, avgSpeed);
+            }
             
             this.lastProgressUpdate = { time: now, loaded, index };
           }
