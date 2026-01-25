@@ -881,8 +881,7 @@ Object.assign(Drive, {
 });
 
 // FIM DA PARTE 2/3
-// Continue para a Parte 3/3
-// ==================== DRIVE.JS - PARTE 3/3 ====================
+// Continue para a Parte 3/3// ==================== DRIVE.JS - PARTE 3/3 ====================
 // UPLOAD, METADATA E FINALIZAÇÃO
 
 // Continuação do objeto Drive...
@@ -1035,8 +1034,10 @@ Object.assign(Drive, {
       const hasLargeFiles = files.some(f => f.size > 500 * 1024 * 1024);
       
       if (hasLargeFiles) {
-        this.MAX_CONCURRENT_UPLOADS = 5;
-        Notificacao.show('Detectados arquivos grandes. Upload pode demorar...', 'info');
+        this.MAX_CONCURRENT_UPLOADS = 3;
+        Notificacao.show('Detectados arquivos grandes. Iniciando upload de até 3 arquivos simultâneos...', 'info');
+      } else {
+        Notificacao.show('Iniciando upload de até 5 arquivos simultâneos...', 'info');
       }
 
       this.uploadQueue = files.map((file, index) => ({
@@ -1055,7 +1056,8 @@ Object.assign(Drive, {
       this.uploadStats.speeds = [];
 
       const uploadPromises = [];
-      const concurrency = hasLargeFiles ? 2 : this.MAX_CONCURRENT_UPLOADS;
+      // 5 uploads simultâneos para arquivos normais, 3 para arquivos muito grandes (>500MB)
+      const concurrency = hasLargeFiles ? 3 : 5;
       
       for (let i = 0; i < concurrency; i++) {
         uploadPromises.push(this.processUploadQueue());
