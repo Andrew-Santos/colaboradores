@@ -332,15 +332,10 @@ const Drive = {
 
     const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
     for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
-  }
-
-  // FIM DA PARTE 1/3
-};
+  },
 
 // ==================== PARTE 2/3 - CARREGAMENTO E RENDERIZAÇÃO ====================
-  // CONTINUAÇÃO DO OBJETO Drive
-  ,
-  
+
   async loadClients() {
     try {
       const result = await window.supabaseAPI.getClients();
@@ -1307,3 +1302,4 @@ Auth.showCorrectScreen = function() {
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
