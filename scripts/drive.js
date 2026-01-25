@@ -15,7 +15,7 @@ const Drive = {
   lastTapTime: 0,
   lastTapItem: null,
   
-  // Configurações de upload otimizadas
+  // Configurações de upload otimizadas para arquivos grandes (2GB)
   MAX_CONCURRENT_UPLOADS: 10,
   THUMBNAIL_SIZE: 150,
   CHUNK_SIZE: 50 * 1024 * 1024,
@@ -332,12 +332,18 @@ const Drive = {
     const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
     for (let i = from; i <= to; i++) this.selectedItems.add(allItems[i]);
   }
+};
 
-  // FIM DA PARTE 1/3
-  // OS MÉTODOS CONTINUAM NA PARTE 2
-  ,
+// FIM DA PARTE 1/3
+// Continue para a Parte 2/3
 
-  // ==================== PARTE 2/3 - CARREGAMENTO E RENDERIZAÇÃO ====================
+// ==================== DRIVE.JS - PARTE 2/3 ====================
+// CARREGAMENTO, RENDERIZAÇÃO E AÇÕES
+
+// Continuação do objeto Drive...
+Object.assign(Drive, {
+
+  // ==================== CARREGAMENTO DE DADOS ====================
   
   async loadClients() {
     try {
@@ -460,6 +466,8 @@ const Drive = {
       `;
     }
   },
+
+  // ==================== RENDERIZAÇÃO ====================
 
   changeViewMode(mode) {
     this.viewMode = mode;
@@ -588,6 +596,8 @@ const Drive = {
     `;
   },
 
+  // ==================== FORMATAÇÃO ====================
+
   formatFileSize(kb) {
     if (!kb) return '';
     if (kb < 1024) return `${Math.round(kb)} KB`;
@@ -634,6 +644,8 @@ const Drive = {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   },
 
+  // ==================== SELEÇÃO ====================
+
   clearSelection() {
     this.selectedItems.clear();
     this.lastSelectedItem = null;
@@ -655,6 +667,8 @@ const Drive = {
       selectionBar.classList.remove('show');
     }
   },
+
+  // ==================== PREVIEW ====================
 
   previewFile(fileId) {
     const file = this.files.find(f => String(f.id) === String(fileId));
@@ -681,6 +695,8 @@ const Drive = {
 
     document.getElementById('modal-preview').classList.add('show');
   },
+
+  // ==================== DELETE ====================
 
   async confirmDelete(id) {
     if (!confirm('Excluir este arquivo?')) return;
@@ -753,6 +769,8 @@ const Drive = {
     }
   },
 
+  // ==================== DOWNLOAD ====================
+
   async downloadSelected() {
     const fileItems = Array.from(this.selectedItems).filter(item => item.startsWith('file-'));
     
@@ -785,7 +803,12 @@ const Drive = {
       const zip = new JSZip();
       let completed = 0;
 
-      for (const file of files) {
+      // Download com até 5 arquivos simultâneos
+      const MAX_CONCURRENT_DOWNLOADS = 5;
+      const downloadQueue = [...files];
+      const activeDownloads = [];
+
+      const downloadFile = async (file) => {
         try {
           Notificacao.show(`Baixando ${completed + 1} de ${files.length}...`, 'info');
           
@@ -800,6 +823,24 @@ const Drive = {
         } catch (error) {
           console.error(`[Drive] Erro ao baixar ${file.name}:`, error);
           Notificacao.show(`Erro ao baixar ${file.name}`, 'warning');
+        }
+      };
+
+      // Processa downloads em lotes de 5
+      while (downloadQueue.length > 0 || activeDownloads.length > 0) {
+        // Inicia novos downloads até o limite
+        while (activeDownloads.length < MAX_CONCURRENT_DOWNLOADS && downloadQueue.length > 0) {
+          const file = downloadQueue.shift();
+          const downloadPromise = downloadFile(file).then(() => {
+            const index = activeDownloads.indexOf(downloadPromise);
+            if (index > -1) activeDownloads.splice(index, 1);
+          });
+          activeDownloads.push(downloadPromise);
+        }
+
+        // Aguarda pelo menos um download completar
+        if (activeDownloads.length > 0) {
+          await Promise.race(activeDownloads);
         }
       }
 
@@ -837,11 +878,17 @@ const Drive = {
     }
   }
 
-  // FIM DA PARTE 2/3
-  // CONTINUA NA PARTE 3 COM MÉTODOS DE UPLOAD
-  ,
+});
 
-  // ==================== PARTE 3/3 - UPLOAD E FINALIZAÇÃO ====================
+// FIM DA PARTE 2/3
+// Continue para a Parte 3/3
+// ==================== DRIVE.JS - PARTE 3/3 ====================
+// UPLOAD, METADATA E FINALIZAÇÃO
+
+// Continuação do objeto Drive...
+Object.assign(Drive, {
+
+  // ==================== EXTRAÇÃO DE METADATA ====================
   
   async extractImageMetadata(file) {
     return new Promise((resolve) => {
@@ -877,6 +924,8 @@ const Drive = {
       video.src = URL.createObjectURL(file);
     });
   },
+
+  // ==================== GERAÇÃO DE THUMBNAILS ====================
 
   async generateVideoThumbnail(file) {
     return new Promise((resolve) => {
@@ -958,6 +1007,8 @@ const Drive = {
   extractCaptureDate(file) {
     return file.lastModified ? new Date(file.lastModified).toISOString() : null;
   },
+
+  // ==================== UPLOAD DE ARQUIVOS ====================
 
   async uploadFiles(files) {
     if (!this.selectedClient) {
@@ -1103,9 +1154,17 @@ const Drive = {
     }
   },
 
+  // ==================== UPLOAD COM RETRY E TIMEOUT AUMENTADO ====================
+
   async uploadToR2WithRetry(file, uploadUrl, index, retryCount = 0) {
     try {
-      const timeoutMs = Math.max(10 * 60 * 1000, (file.size / (1024 * 1024 * 1024)) * 5 * 60 * 1000);
+      // TIMEOUT AUMENTADO PARA ARQUIVOS DE 2GB
+      // Mínimo: 30 minutos
+      // Ou: 15 minutos por GB de arquivo
+      const timeoutMs = Math.max(
+        30 * 60 * 1000, // 30 minutos mínimo
+        (file.size / (1024 * 1024 * 1024)) * 15 * 60 * 1000 // 15 min por GB
+      );
 
       await this.uploadToR2WithProgress(file, uploadUrl, timeoutMs, (loaded) => {
         const speeds = this.uploadStats.speeds || [];
@@ -1155,13 +1214,15 @@ const Drive = {
       let lastProgressTime = Date.now();
       let uploadStalled = false;
 
+      // Verifica se o upload está travado (sem progresso por mais de 60 segundos)
       const stallCheckInterval = setInterval(() => {
         const now = Date.now();
-        if (now - lastProgressTime > 30000) {
+        // Aumentado para 60 segundos para arquivos grandes
+        if (now - lastProgressTime > 60000) {
           uploadStalled = true;
           clearInterval(stallCheckInterval);
           xhr.abort();
-          reject(new Error('Upload travado - sem progresso por 30 segundos'));
+          reject(new Error('Upload travado - sem progresso por 60 segundos'));
         }
       }, 5000);
 
@@ -1191,7 +1252,7 @@ const Drive = {
 
       xhr.addEventListener('timeout', () => {
         clearInterval(stallCheckInterval);
-        reject(new Error(`Timeout após ${Math.round(timeoutMs / 1000)}s`));
+        reject(new Error(`Timeout após ${Math.round(timeoutMs / 1000)}s (${Math.round(timeoutMs / 60000)} minutos)`));
       });
 
       xhr.addEventListener('abort', () => {
@@ -1232,7 +1293,8 @@ const Drive = {
         return null;
       }
 
-      await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl, 60000);
+      // Thumbnail tem timeout menor (2 minutos é suficiente)
+      await this.uploadToR2WithProgress(thumbnailBlob, thumbUrlResult.uploadUrl, 2 * 60 * 1000);
       return thumbUrlResult.publicUrl;
       
     } catch (error) {
@@ -1240,9 +1302,10 @@ const Drive = {
       return null;
     }
   }
-};
 
-// ==================== FINALIZAÇÃO ====================
+});
+
+// ==================== FINALIZAÇÃO E INICIALIZAÇÃO ====================
 
 // Sobrescrever showCorrectScreen do Auth para o Drive
 Auth.showCorrectScreen = function() {
@@ -1264,3 +1327,6 @@ Auth.showCorrectScreen = function() {
 
 // Inicializar quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => Drive.init());
+
+// ==================== FIM DO DRIVE.JS ====================
+// Todas as 3 partes foram concluídas!
