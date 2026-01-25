@@ -459,13 +459,13 @@ app.get('/api/drive/contents', verifyToken, async (req, res) => {
 app.post('/api/drive/file', verifyToken, async (req, res) => {
   try {
     const { 
-      clientId, path, name, urlMedia, urlThumbnail, 
+      clientId, name, urlMedia, urlThumbnail, 
       dimensions, duration, fileType, mimeType, fileSizeKb, dataDeCaptura 
     } = req.body;
 
-    console.log('[Drive File] Recebendo:', { clientId, path, name, fileType, fileSizeKb });
+    console.log('[Drive File] Recebendo:', { clientId, name, fileType, fileSizeKb });
 
-    if (!clientId || !path || !name || !urlMedia) {
+    if (!clientId || !name || !urlMedia) {
       console.error('[Drive File] Dados incompletos:', req.body);
       return res.status(400).json({ 
         success: false, 
@@ -482,7 +482,6 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
 
     const fileData = {
       id_client: parseInt(clientId),
-      path: path,
       name: name,
       url_media: urlMedia,
       url_thumbnail: urlThumbnail || null,
@@ -539,7 +538,7 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
 
     const { data: file, error: fetchError } = await supabase
       .from('drive_files')
-      .select('path, url_thumbnail')
+      .select('url_media, url_thumbnail')
       .eq('id', fileId)
       .single();
 
@@ -562,7 +561,14 @@ app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
     }
 
     const deletedFiles = [];
-    if (file.path) deletedFiles.push(file.path);
+    
+    // Extrair path da url_media
+    if (file.url_media) {
+      const mediaPath = file.url_media.split('.com/')[1];
+      if (mediaPath) deletedFiles.push(mediaPath);
+    }
+    
+    // Extrair path da url_thumbnail
     if (file.url_thumbnail) {
       const thumbPath = file.url_thumbnail.split('.com/')[1];
       if (thumbPath) deletedFiles.push(thumbPath);
