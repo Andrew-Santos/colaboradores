@@ -44,7 +44,13 @@ try {
 
   supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
+    process.env.SUPABASE_SERVICE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
   );
 
   console.log('[Server] Supabase inicializado');
@@ -58,6 +64,7 @@ const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('[Auth] Token não fornecido');
       return res.status(401).json({ 
         success: false,
         error: 'Token não fornecido' 
@@ -76,9 +83,10 @@ const verifyToken = async (req, res, next) => {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
+      console.log('[Auth] Token inválido:', error?.message);
       return res.status(401).json({ 
         success: false,
-        error: 'Token inválido' 
+        error: 'Token inválido ou expirado' 
       });
     }
     
@@ -98,6 +106,8 @@ const verifyToken = async (req, res, next) => {
 app.post('/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    console.log('[Login] Tentativa:', email);
 
     if (!email || !password) {
       return res.status(400).json({ 
@@ -119,11 +129,14 @@ app.post('/auth/login', async (req, res) => {
     });
 
     if (error) {
+      console.log('[Login] Falha:', error.message);
       return res.status(401).json({ 
         success: false,
         error: 'Credenciais inválidas' 
       });
     }
+
+    console.log('[Login] Sucesso:', email);
 
     res.json({
       success: true,
@@ -144,10 +157,12 @@ app.post('/auth/login', async (req, res) => {
 });
 
 app.post('/auth/logout', verifyToken, async (req, res) => {
+  console.log('[Logout] Usuário:', req.user.email);
   res.json({ success: true });
 });
 
 app.post('/auth/verify', verifyToken, (req, res) => {
+  console.log('[Verify] Token válido:', req.user.email);
   res.json({
     success: true,
     user: {
@@ -352,9 +367,8 @@ app.delete('/api/delete-post/:postId', verifyToken, async (req, res) => {
   }
 });
 
-// ============ ROTAS DO DRIVE (SIMPLIFICADAS - SEM PASTAS) ============
+// ============ ROTAS DO DRIVE ============
 
-// Storage Usage
 app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
   try {
     if (!supabase) {
@@ -402,7 +416,6 @@ app.get('/api/drive/storage-usage', verifyToken, async (req, res) => {
   }
 });
 
-// Listar arquivos do cliente (sem pastas)
 app.get('/api/drive/contents', verifyToken, async (req, res) => {
   try {
     const { clientId } = req.query;
@@ -421,7 +434,6 @@ app.get('/api/drive/contents', verifyToken, async (req, res) => {
       });
     }
 
-    // Buscar apenas arquivos do cliente
     const { data: files, error: filesError } = await supabase
       .from('drive_files')
       .select('*')
@@ -512,7 +524,6 @@ app.post('/api/drive/file', verifyToken, async (req, res) => {
   }
 });
 
-// Deletar arquivo
 app.delete('/api/drive/file/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
@@ -897,5 +908,3 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
-
-
