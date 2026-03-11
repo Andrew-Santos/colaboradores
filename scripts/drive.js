@@ -1015,13 +1015,25 @@ Object.assign(Drive, {
       return;
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/avi', 'video/x-msvideo'];
-    
-    for (const file of files) {
-      if (!allowedTypes.includes(file.type)) {
-        Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
-        return;
-      }
+    const allowedTypes = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'image/heic', 'image/heif',        // iPhone HEIC/HEIF
+  'video/mp4', 'video/quicktime',    // MP4 e MOV (iPhone)
+  'video/avi', 'video/x-msvideo'
+];
+
+// Extensões como fallback — iOS às vezes retorna MIME type vazio ou incorreto
+const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'mp4', 'mov', 'avi'];
+
+for (const file of files) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const typeAllowed = allowedTypes.includes(file.type);
+  const extAllowed = allowedExtensions.includes(ext);
+
+  if (!typeAllowed && !extAllowed) {
+    Notificacao.show(`Tipo não permitido: ${file.name}`, 'warning');
+    return;
+  }
       if (file.size > 5000 * 1024 * 1024) {
         Notificacao.show(`Arquivo muito grande (max 5GB): ${file.name}`, 'warning');
         return;
@@ -1332,4 +1344,5 @@ document.addEventListener('DOMContentLoaded', () => Drive.init());
 
 // ==================== FIM DO DRIVE.JS ====================
 // Todas as 3 partes foram concluídas!
+
 
