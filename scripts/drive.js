@@ -1135,8 +1135,21 @@ for (const file of files) {
       
       const captureDate = this.extractCaptureDate(file);
 
-      const urlResult = await window.r2API.generateUploadUrl(fileName, file.type, file.size);
-      if (!urlResult.success) throw new Error('Erro ao gerar URL: ' + urlResult.error);
+// Fallback para HEIC/HEIF — iOS às vezes retorna type vazio
+const ext = file.name.split('.').pop().toLowerCase();
+const mimeByExt = {
+  'heic': 'image/heic',
+  'heif': 'image/heif',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'png': 'image/png',
+  'webp': 'image/webp',
+  'mp4': 'video/mp4',
+  'mov': 'video/quicktime',
+};
+const contentType = file.type || mimeByExt[ext] || 'application/octet-stream';
+
+const urlResult = await window.r2API.generateUploadUrl(fileName, contentType, file.size);
 
       await this.uploadToR2WithRetry(file, urlResult.uploadUrl, index);
 
@@ -1344,5 +1357,6 @@ document.addEventListener('DOMContentLoaded', () => Drive.init());
 
 // ==================== FIM DO DRIVE.JS ====================
 // Todas as 3 partes foram concluídas!
+
 
 
