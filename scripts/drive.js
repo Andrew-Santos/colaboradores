@@ -926,47 +926,81 @@ Object.assign(Drive, {
 
   // ==================== GERAÇÃO DE THUMBNAILS ====================
 
-  async generateVideoThumbnail(file) {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      video.preload = 'metadata';
-      video.muted = true;
-      
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.min(1, video.duration * 0.1);
-      };
-      
-      video.onseeked = () => {
-        const thumbSize = this.THUMBNAIL_SIZE;
-        canvas.width = thumbSize;
-        canvas.height = thumbSize;
-        
-        const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
-        const scaledWidth = video.videoWidth * scale;
-        const scaledHeight = video.videoHeight * scale;
-        
-        const x = (thumbSize - scaledWidth) / 2;
-        const y = (thumbSize - scaledHeight) / 2;
-        
-        ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
-        
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(video.src);
-          resolve(blob);
-        }, 'image/jpeg', 0.85);
-      };
-      
-      video.onerror = () => {
+async generateVideoThumbnail(file) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    video.preload = 'auto';       // carrega dados de frame, não só metadata
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+
+    let resolved = false;
+    const safeResolve = (val) => {
+      if (!resolved) {
+        resolved = true;
         URL.revokeObjectURL(video.src);
-        resolve(null);
-      };
-      
-      video.src = URL.createObjectURL(file);
-    });
-  },
+        resolve(val);
+      }
+    };
+
+    // Captura o frame com retry caso ainda esteja preto
+    const captureFrame = (attempt = 0) => {
+      const thumbSize = this.THUMBNAIL_SIZE;
+      canvas.width = thumbSize;
+      canvas.height = thumbSize;
+
+      const scale = Math.max(thumbSize / video.videoWidth, thumbSize / video.videoHeight);
+      const scaledW = video.videoWidth * scale;
+      const scaledH = video.videoHeight * scale;
+      const x = (thumbSize - scaledW) / 2;
+      const y = (thumbSize - scaledH) / 2;
+
+      ctx.drawImage(video, x, y, scaledW, scaledH);
+
+      // Verifica se o canvas está todo preto (frame ainda não decodificado)
+      const pixels = ctx.getImageData(0, 0, thumbSize, thumbSize).data;
+      const isBlack = pixels.every((v, i) => (i % 4 === 3) || v < 10);
+
+      if (isBlack && attempt < 5) {
+        setTimeout(() => captureFrame(attempt + 1), 200);
+        return;
+      }
+
+      canvas.toBlob((blob) => safeResolve(blob), 'image/jpeg', 0.85);
+    };
+
+    video.onloadeddata = () => {
+      // Para vídeos curtos vai ao primeiro frame disponível
+      // Para vídeos longos vai a 10% da duração (max 2s)
+      const seekTo = video.duration > 0
+        ? Math.min(video.duration * 0.1, Math.min(2, video.duration - 0.05))
+        : 0;
+
+      if (seekTo <= 0 || video.duration < 0.5) {
+        // Vídeo muito curto: captura direto sem seek
+        setTimeout(() => captureFrame(), 100);
+      } else {
+        video.currentTime = seekTo;
+      }
+    };
+
+    video.onseeked = () => {
+      // Delay para garantir que o frame foi decodificado
+      setTimeout(() => captureFrame(), 80);
+    };
+
+    video.onerror = () => safeResolve(null);
+
+    // Timeout de segurança
+    setTimeout(() => safeResolve(null), 15000);
+
+    video.src = URL.createObjectURL(file);
+    video.load();
+  });
+},
 
   async generateImageThumbnail(file) {
     return new Promise((resolve) => {
